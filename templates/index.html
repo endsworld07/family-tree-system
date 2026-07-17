@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8">
+
+<title>親屬關係系統</title>
+
+<style>
+
+body{
+
+font-family:Microsoft JhengHei;
+
+width:900px;
+
+margin:auto;
+
+padding:30px;
+
+}
+
+table{
+
+border-collapse:collapse;
+
+width:100%;
+
+}
+
+td,th{
+
+border:1px solid #ccc;
+
+padding:8px;
+
+}
+
+input,select{
+
+padding:6px;
+
+}
+
+button{
+
+padding:8px 20px;
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>親屬關係系統</h1>
+
+<form action="/add" method="post">
+
+姓名
+
+<input
+name="name"
+required>
+
+稱謂
+
+<select name="title">
+
+{% for t in titles %}
+
+<option>{{t}}</option>
+
+{% endfor %}
+
+</select>
+
+<button>
+
+新增
+
+</button>
+
+</form>
+
+<br>
+
+<table>
+
+<tr>
+
+<th>姓名</th>
+
+<th>稱謂</th>
+
+<th></th>
+
+</tr>
+
+{% for p in family %}
+
+<tr>
+
+<td>{{p.name}}</td>
+
+<td>（{{p.title}}）</td>
+
+<td>
+
+<a href="/delete/{{loop.index0}}">
+
+刪除
+
+</a>
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+</body>
+
+</html>
