@@ -1,129 +1,94 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="zh-TW">
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>親屬關係系統</title>
 
-<meta charset="utf-8">
-
-<title>親屬關係系統</title>
-
-<style>
-
-body{
-
-font-family:Microsoft JhengHei;
-
-width:900px;
-
-margin:auto;
-
-padding:30px;
-
-}
-
-table{
-
-border-collapse:collapse;
-
-width:100%;
-
-}
-
-td,th{
-
-border:1px solid #ccc;
-
-padding:8px;
-
-}
-
-input,select{
-
-padding:6px;
-
-}
-
-button{
-
-padding:8px 20px;
-
-}
-
-</style>
-
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body>
 
-<h1>親屬關係系統</h1>
+<div class="container">
 
-<form action="/add" method="post">
+    <h1>親屬關係系統</h1>
 
-姓名
+    <!-- 申請人 -->
+    <div class="applicant-card">
 
-<input
-name="name"
-required>
+        <form action="/save_applicant" method="post">
 
-稱謂
+            <label>申請人</label>
 
-<select name="title">
+            <input
+                type="text"
+                name="applicant"
+                value="{{ applicant }}"
+                placeholder="請輸入姓名">
 
-{% for t in titles %}
+            <button type="submit">
+                儲存
+            </button>
 
-<option>{{t}}</option>
+            <a class="clear-btn" href="/clear">
+                清空
+            </a>
 
-{% endfor %}
+        </form>
 
-</select>
+    </div>
 
-<button>
 
-新增
+    <!-- 親屬固定位置 -->
 
-</button>
+    <div class="family-grid">
 
-</form>
+        {% for relation, position in layout.items() %}
 
-<br>
+        <div
+            class="family-box"
+            style="
+                grid-row: {{ position.row }};
+                grid-column: {{ position.col }};
+            ">
 
-<table>
+            <div class="relation-title">
 
-<tr>
+                {{ relation }}
 
-<th>姓名</th>
+            </div>
 
-<th>稱謂</th>
+            <form action="/save_family" method="post">
 
-<th></th>
+                <input
+                    type="hidden"
+                    name="relation"
+                    value="{{ relation }}">
 
-</tr>
+                <input
+                    class="name-input"
+                    type="text"
+                    name="name"
+                    value="{{ family[relation] }}"
+                    placeholder="姓名">
 
-{% for p in family %}
+                <button type="submit">
 
-<tr>
+                    儲存
 
-<td>{{p.name}}</td>
+                </button>
 
-<td>（{{p.title}}）</td>
+            </form>
 
-<td>
+        </div>
 
-<a href="/delete/{{loop.index0}}">
+        {% endfor %}
 
-刪除
+    </div>
 
-</a>
-
-</td>
-
-</tr>
-
-{% endfor %}
-
-</table>
+</div>
 
 </body>
-
 </html>

@@ -1,68 +1,84 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, url_for
+from relationship import RELATION_LAYOUT
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = "family-tree"
 
-family = []
+# =========================
+# 資料
+# =========================
 
-titles = [
-    "烈祖父","烈祖母",
-    "烈伯父","烈伯母",
+applicant = ""
 
-    "天祖父","天祖母",
-    "天伯父","天伯母",
+titles = list(RELATION_LAYOUT.keys())
 
-    "高祖父","高祖母",
-    "高伯父","高伯母",
+# 每一個稱謂固定一個姓名
+family = {title: "" for title in titles}
 
-    "曾祖父","曾祖母",
-    "曾伯父","曾伯母",
 
-    "祖父","祖母",
-
-    "父親","母親",
-
-    "申請人"
-]
-
+# =========================
+# 首頁
+# =========================
 
 @app.route("/")
-def home():
+def index():
 
     return render_template(
         "index.html",
+        applicant=applicant,
         family=family,
-        titles=titles
+        layout=RELATION_LAYOUT,
     )
 
 
-@app.route("/add", methods=["POST"])
-def add():
+# =========================
+# 儲存申請人
+# =========================
 
-    name=request.form["name"]
+@app.route("/save_applicant", methods=["POST"])
+def save_applicant():
 
-    title=request.form["title"]
+    global applicant
 
-    family.append({
-        "name":name,
-        "title":title
-    })
+    applicant = request.form.get("applicant", "").strip()
 
-    return redirect("/")
-
-
-@app.route("/delete/<int:index>")
-def delete(index):
-
-    if index < len(family):
-        family.pop(index)
-
-    return redirect("/")
+    return redirect(url_for("index"))
 
 
-if __name__=="__main__":
+# =========================
+# 更新親屬姓名
+# =========================
 
-    app.run(
-        host="0.0.0.0",
-        port=7860,
-        debug=True
-    )
+@app.route("/save_family", methods=["POST"])
+def save_family():
+
+    relation = request.form.get("relation", "")
+    name = request.form.get("name", "").strip()
+
+    if relation in family:
+        family[relation] = name
+
+    return redirect(url_for("index"))
+
+
+# =========================
+# 清空
+# =========================
+
+@app.route("/clear")
+def clear():
+
+    global applicant
+
+    applicant = ""
+
+    for key in family:
+        family[key] = ""
+
+    return redirect(url_for("index"))
+
+
+# =========================
+
+if __name__ == "__main__":
+    app.run(debug=True)
