@@ -1,53 +1,185 @@
+# relationship.py
 """
-親屬關係版面設定
+Government Family Tree v2.0
+--------------------------------
+此檔案只定義親屬資料。
 
-row : 第幾列（由上而下）
-col : 第幾欄（由左而右）
+不要放：
+- x/y 座標
+- CSS Class
+- HTML
+- 線條資訊
 
-HTML 會依照這份資料自動產生固定位置。
+所有版面配置皆由 family_tree.css 控制。
 """
 
-RELATION_LAYOUT = {
+RELATIONS = [
 
-    # ===== 第一代 =====
-    "烈祖父": {"row": 1, "col": 5},
-    "烈祖母": {"row": 1, "col": 7},
+    # =========================
+    # 第一代
+    # =========================
+    {
+        "id": "great_grandfather",
+        "title": "烈祖父",
+        "group": "great_grandparents"
+    },
+    {
+        "id": "great_grandmother",
+        "title": "烈祖母",
+        "group": "great_grandparents"
+    },
 
-    # ===== 第二代 =====
-    "祖父": {"row": 2, "col": 4},
-    "祖母": {"row": 2, "col": 6},
-    "外祖父": {"row": 2, "col": 8},
-    "外祖母": {"row": 2, "col": 10},
+    # =========================
+    # 第二代
+    # =========================
+    {
+        "id": "grandfather",
+        "title": "祖父",
+        "group": "grandparents"
+    },
+    {
+        "id": "grandmother",
+        "title": "祖母",
+        "group": "grandparents"
+    },
 
-    # ===== 第三代 =====
-    "父親": {"row": 3, "col": 3},
-    "母親": {"row": 3, "col": 5},
-    "岳父": {"row": 3, "col": 7},
-    "岳母": {"row": 3, "col": 9},
+    {
+        "id": "maternal_grandfather",
+        "title": "外祖父",
+        "group": "grandparents"
+    },
+    {
+        "id": "maternal_grandmother",
+        "title": "外祖母",
+        "group": "grandparents"
+    },
 
-    # ===== 第四代 =====
-    "本人": {"row": 4, "col": 6},
-    "配偶": {"row": 4, "col": 8},
+    # =========================
+    # 第三代
+    # =========================
+    {
+        "id": "father",
+        "title": "父親",
+        "group": "parents"
+    },
+    {
+        "id": "mother",
+        "title": "母親",
+        "group": "parents"
+    },
 
-    # ===== 第五代 =====
-    "長子": {"row": 5, "col": 3},
-    "次子": {"row": 5, "col": 4},
-    "三子": {"row": 5, "col": 5},
-    "四子": {"row": 5, "col": 6},
+    {
+        "id": "father_in_law",
+        "title": "岳父",
+        "group": "parents"
+    },
+    {
+        "id": "mother_in_law",
+        "title": "岳母",
+        "group": "parents"
+    },
 
-    "長女": {"row": 5, "col": 7},
-    "次女": {"row": 5, "col": 8},
-    "三女": {"row": 5, "col": 9},
-    "四女": {"row": 5, "col": 10},
+    # =========================
+    # 本人
+    # =========================
+    {
+        "id": "self",
+        "title": "本人",
+        "group": "self"
+    },
+    {
+        "id": "spouse",
+        "title": "配偶",
+        "group": "self"
+    },
 
-    # ===== 第六代 =====
-    "長孫": {"row": 6, "col": 3},
-    "次孫": {"row": 6, "col": 4},
-    "三孫": {"row": 6, "col": 5},
-    "四孫": {"row": 6, "col": 6},
+    # =========================
+    # 子女
+    # =========================
+    {
+        "id": "son1",
+        "title": "長子",
+        "group": "children"
+    },
+    {
+        "id": "son2",
+        "title": "次子",
+        "group": "children"
+    },
+    {
+        "id": "son3",
+        "title": "三子",
+        "group": "children"
+    },
+    {
+        "id": "son4",
+        "title": "四子",
+        "group": "children"
+    },
 
-    "長孫女": {"row": 6, "col": 7},
-    "次孫女": {"row": 6, "col": 8},
-    "三孫女": {"row": 6, "col": 9},
-    "四孫女": {"row": 6, "col": 10},
-}
+    {
+        "id": "daughter1",
+        "title": "長女",
+        "group": "children"
+    },
+    {
+        "id": "daughter2",
+        "title": "次女",
+        "group": "children"
+    },
+    {
+        "id": "daughter3",
+        "title": "三女",
+        "group": "children"
+    },
+    {
+        "id": "daughter4",
+        "title": "四女",
+        "group": "children"
+    },
+
+    # =========================
+    # 孫輩
+    # =========================
+    {
+        "id": "grandson1",
+        "title": "長孫",
+        "group": "grandchildren"
+    },
+    {
+        "id": "grandson2",
+        "title": "次孫",
+        "group": "grandchildren"
+    },
+    {
+        "id": "grandson3",
+        "title": "三孫",
+        "group": "grandchildren"
+    },
+    {
+        "id": "grandson4",
+        "title": "四孫",
+        "group": "grandchildren"
+    },
+
+    {
+        "id": "granddaughter1",
+        "title": "長孫女",
+        "group": "grandchildren"
+    },
+    {
+        "id": "granddaughter2",
+        "title": "次孫女",
+        "group": "grandchildren"
+    },
+    {
+        "id": "granddaughter3",
+        "title": "三孫女",
+        "group": "grandchildren"
+    },
+    {
+        "id": "granddaughter4",
+        "title": "四孫女",
+        "group": "grandchildren"
+    },
+]

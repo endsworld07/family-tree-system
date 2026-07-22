@@ -1,0 +1,245 @@
+/* ==========================================
+   Government Family Tree v2
+========================================== */
+
+.family-tree {
+
+    position: relative;
+
+    width: 210mm;
+    height: 297mm;
+
+    margin: 20px auto;
+
+    background: white;
+
+    border: 1px solid #999;
+
+    box-sizing: border-box;
+
+}
+
+
+/* ==============================
+   共用人物框
+============================== */
+
+.person{
+
+    position:absolute;
+
+    width:120px;
+
+    border:2px solid #333;
+
+    background:#fff;
+
+    box-sizing:border-box;
+
+    text-align:center;
+
+}
+
+
+.person .title{
+
+    background:#eeeeee;
+
+    font-weight:bold;
+
+    padding:5px;
+
+    border-bottom:1px solid #333;
+
+}
+
+
+.person input{
+
+    width:100%;
+
+    border:none;
+
+    padding:8px;
+
+    text-align:center;
+
+    box-sizing:border-box;
+
+    font-size:15px;
+
+}
+
+
+.person.small{
+
+    width:95px;
+
+}
+
+
+/* ==========================================
+   第一代
+========================================== */
+
+#great_grandfather{
+
+    left:340px;
+    top:20px;
+
+}
+
+#great_grandmother{
+
+    left:500px;
+    top:20px;
+
+}
+
+
+/* ==========================================
+   第二代
+========================================== */
+
+#grandfather{
+
+    left:340px;
+    top:140px;
+
+}
+
+#grandmother{
+
+    left:500px;
+    top:140px;
+
+}
+
+#maternal_grandfather{
+
+    left:40px;
+    top:140px;
+
+}
+
+#maternal_grandmother{
+
+    left:180px;
+    top:140px;
+
+}
+
+
+/* ==========================================
+   第三代
+========================================== */
+
+#father{
+
+    left:340px;
+    top:260px;
+
+}
+
+#mother{
+
+    left:500px;
+    top:260px;
+
+}
+
+#father_in_law{
+
+    left:700px;
+    top:260px;
+
+}
+
+#mother_in_law{
+
+    left:860px;
+    top:260px;
+
+}
+
+
+/* ==========================================
+   本人
+========================================== */
+
+#self{
+
+    left:340px;
+    top:400px;
+
+}
+
+#spouse{
+
+    left:500px;
+    top:400px;
+
+}
+
+
+/* ==========================================
+   子女
+========================================== */
+
+#children-row{
+
+    position:absolute;
+
+    left:20px;
+
+    top:600px;
+
+    display:flex;
+
+    gap:10px;
+
+}
+
+
+/* ==========================================
+   孫輩
+========================================== */
+
+#grandchildren-row{
+
+    position:absolute;
+
+    left:20px;
+
+    top:760px;
+
+    display:flex;
+
+    gap:10px;
+
+}
+
+
+/* ==========================================
+   列印
+========================================== */
+
+@media print{
+
+    body{
+
+        margin:0;
+
+    }
+
+    .family-tree{
+
+        border:none;
+
+        margin:0;
+
+        page-break-after:always;
+
+    }
+
+}
