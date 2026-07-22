@@ -1,0 +1,65 @@
+<section class="family-section">
+
+    <h2 class="section-title">
+        二、親屬關係表
+    </h2>
+
+    <form
+        action="/save"
+        method="post"
+        class="family-form">
+
+        <div class="family-grid">
+
+            {% for title, position in layout.items() %}
+
+            <div
+                class="family-box row{{ position.row }} col{{ position.col }}">
+
+                <label
+                    class="family-title"
+                    for="{{ title }}">
+
+                    {{ title }}
+
+                </label>
+
+                <input
+                    id="{{ title }}"
+                    class="family-input"
+                    type="text"
+                    name="{{ title }}"
+                    autocomplete="off"
+                    value="{{ family.get(title,'') if family else '' }}"
+                    placeholder="請輸入姓名">
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+        <div class="family-action">
+
+            <button
+                type="submit"
+                class="save-button">
+
+                儲存親屬資料
+
+            </button>
+
+            <button
+                type="button"
+                class="print-button"
+                onclick="window.print();">
+
+                列印親屬關係表
+
+            </button>
+
+        </div>
+
+    </form>
+
+</section>

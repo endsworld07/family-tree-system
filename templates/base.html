@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+    <title>
+        {% block title %}
+        親屬關係表
+        {% endblock %}
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}">
+
+    {% block head %}
+    {% endblock %}
+
+</head>
+
+<body>
+
+    <div class="page">
+
+        <header class="page-header">
+
+            <div class="header-left">
+
+                <h1>
+                    親屬關係表
+                </h1>
+
+                <div class="sub-title">
+
+                    Government Family Relationship Form
+
+                </div>
+
+            </div>
+
+            <div class="header-right">
+
+                <div class="print-date">
+
+                    列印日期：
+                    {{ now if now is defined else "" }}
+
+                </div>
+
+            </div>
+
+        </header>
+
+
+        <main class="page-content">
+
+            {% block content %}
+            {% endblock %}
+
+        </main>
+
+
+        <footer class="page-footer">
+
+            <div>
+
+                本表僅供申請使用
+
+            </div>
+
+        </footer>
+
+    </div>
+
+    {% block script %}
+    {% endblock %}
+
+</body>
+
+</html>

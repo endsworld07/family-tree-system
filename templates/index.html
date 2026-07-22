@@ -1,94 +1,21 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>親屬關係系統</title>
+{% block title %}
+政府版親屬關係表
+{% endblock %}
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
+{% block content %}
 
-<body>
+<div class="document">
 
-<div class="container">
+    {% include "partials/applicant.html" %}
 
-    <h1>親屬關係系統</h1>
+    {% include "partials/family_grid.html" %}
 
-    <!-- 申請人 -->
-    <div class="applicant-card">
+    {% include "partials/summary.html" %}
 
-        <form action="/save_applicant" method="post">
-
-            <label>申請人</label>
-
-            <input
-                type="text"
-                name="applicant"
-                value="{{ applicant }}"
-                placeholder="請輸入姓名">
-
-            <button type="submit">
-                儲存
-            </button>
-
-            <a class="clear-btn" href="/clear">
-                清空
-            </a>
-
-        </form>
-
-    </div>
-
-
-    <!-- 親屬固定位置 -->
-
-    <div class="family-grid">
-
-        {% for relation, position in layout.items() %}
-
-        <div
-            class="family-box"
-            style="
-                grid-row: {{ position.row }};
-                grid-column: {{ position.col }};
-            ">
-
-            <div class="relation-title">
-
-                {{ relation }}
-
-            </div>
-
-            <form action="/save_family" method="post">
-
-                <input
-                    type="hidden"
-                    name="relation"
-                    value="{{ relation }}">
-
-                <input
-                    class="name-input"
-                    type="text"
-                    name="name"
-                    value="{{ family[relation] }}"
-                    placeholder="姓名">
-
-                <button type="submit">
-
-                    儲存
-
-                </button>
-
-            </form>
-
-        </div>
-
-        {% endfor %}
-
-    </div>
+    {% include "partials/declaration.html" %}
 
 </div>
 
-</body>
-</html>
+{% endblock %}

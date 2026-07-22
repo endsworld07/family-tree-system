@@ -1,84 +1,73 @@
 from flask import Flask, render_template, request, redirect, url_for
+
 from relationship import RELATION_LAYOUT
+from data import load_family, save_family
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "family-tree"
 
-# =========================
-# 資料
-# =========================
-
-applicant = ""
-
-titles = list(RELATION_LAYOUT.keys())
-
-# 每一個稱謂固定一個姓名
-family = {title: "" for title in titles}
-
-
-# =========================
-# 首頁
-# =========================
 
 @app.route("/")
 def index():
 
+    family = load_family()
+
+    applicant = family.get("applicant", "")
+    id_number = family.get("id_number", "")
+    birthday = family.get("birthday", "")
+    gender = family.get("gender", "")
+    address = family.get("address", "")
+    phone = family.get("phone", "")
+    purpose = family.get("purpose", "")
+
+    family_count = sum(
+        1
+        for title in RELATION_LAYOUT.keys()
+        if family.get(title, "").strip()
+    )
+
     return render_template(
         "index.html",
-        applicant=applicant,
-        family=family,
         layout=RELATION_LAYOUT,
+        family=family,
+        applicant=applicant,
+        id_number=id_number,
+        birthday=birthday,
+        gender=gender,
+        address=address,
+        phone=phone,
+        purpose=purpose,
+        family_count=family_count,
     )
 
 
-# =========================
-# 儲存申請人
-# =========================
+@app.route("/save", methods=["POST"])
+def save():
 
-@app.route("/save_applicant", methods=["POST"])
-def save_applicant():
+    family = load_family()
 
-    global applicant
+    # -------------------------
+    # 申請人資料
+    # -------------------------
 
-    applicant = request.form.get("applicant", "").strip()
+    family["applicant"] = request.form.get("applicant", "").strip()
+    family["id_number"] = request.form.get("id_number", "").strip()
+    family["birthday"] = request.form.get("birthday", "").strip()
+    family["gender"] = request.form.get("gender", "").strip()
+    family["address"] = request.form.get("address", "").strip()
+    family["phone"] = request.form.get("phone", "").strip()
+    family["purpose"] = request.form.get("purpose", "").strip()
 
-    return redirect(url_for("index"))
+    # -------------------------
+    # 親屬資料
+    # -------------------------
 
+    for title in RELATION_LAYOUT.keys():
+        family[title] = request.form.get(title, "").strip()
 
-# =========================
-# 更新親屬姓名
-# =========================
-
-@app.route("/save_family", methods=["POST"])
-def save_family():
-
-    relation = request.form.get("relation", "")
-    name = request.form.get("name", "").strip()
-
-    if relation in family:
-        family[relation] = name
-
-    return redirect(url_for("index"))
-
-
-# =========================
-# 清空
-# =========================
-
-@app.route("/clear")
-def clear():
-
-    global applicant
-
-    applicant = ""
-
-    for key in family:
-        family[key] = ""
+    save_family(family)
 
     return redirect(url_for("index"))
 
-
-# =========================
 
 if __name__ == "__main__":
     app.run(debug=True)
