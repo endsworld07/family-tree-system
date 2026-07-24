@@ -5,20 +5,27 @@ from dataclasses import dataclass
 from models.person import Person
 
 
+DISPLAY_TITLES = {
+    "SELF": "本人",
+    "FATHER": "父親",
+    "MOTHER": "母親",
+    "SPOUSE": "配偶",
+    "CHILD": "子女",
+    "SIBLING": "兄弟姊妹",
+}
+
+
 @dataclass(slots=True)
 class Relationship:
     """
     解析完成的親屬關係
     """
 
-    # 對應的人物
     person: Person
-
-    # 稱謂（父親、母親、祖父、本人…）
     title: str | None = None
-
-    # 世代
     generation: int = 0
-
-    # 同世代排序
     order: int = 0
+
+    @property
+    def display_title(self) -> str:
+        return DISPLAY_TITLES.get(self.title, self.title or "")

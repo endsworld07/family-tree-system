@@ -26,6 +26,7 @@ def test_parents():
 
     resolver = RelationshipResolver(
         people=people,
+        marriages=[],
         applicant="王小明",
     )
 
@@ -35,6 +36,6 @@ def test_parents():
 
     titles = {r.title for r in result}
 
-    assert "父親" in titles
-    assert "母親" in titles
-    assert "本人" in titles
+    assert "FATHER" in titles
+    assert "MOTHER" in titles
+    assert "SELF" in titles

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>親屬關係表</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+</head>
+
+<body>
+
+    <h1>親屬關係表</h1>
+
+    <div class="tree">
+
+        <svg class="connections">
+
+        </svg>
+
+        {% for node in nodes %}
+
+        <div
+            class="node"
+            style="--x: {{ node.x }}px; --y: {{ node.y }}px;"
+        >
+
+            <div class="name">
+                {{ node.relationship.person.name }}
+            </div>
+
+            <div class="title">
+                {{ node.relationship.display_title }}
+            </div>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+</body>
+
+</html>

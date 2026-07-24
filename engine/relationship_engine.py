@@ -7,7 +7,7 @@ from models.relationship import Relationship
 class RelationshipResolver:
     """
     親屬關係解析器（V1）
-    第一版只解析申請人本人
+    第一版只解析申請人
     """
 
     def __init__(
@@ -35,7 +35,7 @@ class RelationshipResolver:
         return [
             Relationship(
                 person=applicant,
-                title="本人",
+                title="SELF",
                 generation=0,
                 order=1,
             )

@@ -1,7 +1,42 @@
 {
   "applicant": "王小明",
 
-  "people": [],
+  "people": [
+    {
+      "id": "1",
+      "name": "爸爸",
+      "gender": "男"
+    },
+    {
+      "id": "2",
+      "name": "媽媽",
+      "gender": "女"
+    },
+    {
+      "id": "3",
+      "name": "王小明",
+      "gender": "男",
+      "father": "爸爸",
+      "mother": "媽媽"
+    },
+    {
+      "id": "4",
+      "name": "王小美",
+      "gender": "女"
+    },
+    {
+      "id": "5",
+      "name": "王大寶",
+      "gender": "男",
+      "father": "王小明",
+      "mother": "王小美"
+    }
+  ],
 
-  "marriages": []
+  "marriages": [
+    {
+      "husband": "王小明",
+      "wife": "王小美"
+    }
+  ]
 }
