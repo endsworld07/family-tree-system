@@ -14,6 +14,7 @@ def test_self():
 
     resolver = RelationshipResolver(
         people=people,
+        marriages=[],
         applicant="王小明",
     )
 
@@ -24,6 +25,6 @@ def test_self():
     relation = result[0]
 
     assert relation.person.name == "王小明"
-    assert relation.title == "本人"
+    assert relation.title == "SELF"
     assert relation.generation == 0
     assert relation.order == 1
