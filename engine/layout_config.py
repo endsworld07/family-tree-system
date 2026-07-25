@@ -1,17 +1,22 @@
 """
-政府版親屬關係表固定座標
+政府版親屬關係表 Layout 設定
 """
 
-POSITIONS = {
-    # 上一代
-    "FATHER": (300, 100),
-    "MOTHER": (500, 100),
+# 節點尺寸
+NODE_WIDTH = 120
+NODE_HEIGHT = 60
 
-    # 同一代
-    "SIBLING": (100, 300),
-    "SELF": (300, 300),
-    "SPOUSE": (500, 300),
+# 世代距離（上下）
+LEVEL_GAP = 180
 
-    # 下一代
-    "CHILD": (300, 500),
-}
+# 左右家庭距離
+BRANCH_GAP = 220
+
+# 配偶距離
+SPOUSE_GAP = 180
+
+# 子女距離
+CHILD_GAP = 180
+
+# 外框留白
+PAGE_MARGIN = 40

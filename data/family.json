@@ -1,5 +1,5 @@
 {
-  "applicant": "王小明",
+  "applicant": "3",
 
   "people": [
     {
@@ -16,8 +16,8 @@
       "id": "3",
       "name": "王小明",
       "gender": "男",
-      "father": "爸爸",
-      "mother": "媽媽"
+      "father": "1",
+      "mother": "2"
     },
     {
       "id": "4",
@@ -28,15 +28,15 @@
       "id": "5",
       "name": "王大寶",
       "gender": "男",
-      "father": "王小明",
-      "mother": "王小美"
+      "father": "3",
+      "mother": "4"
     }
   ],
 
   "marriages": [
     {
-      "husband": "王小明",
-      "wife": "王小美"
+      "husband": "3",
+      "wife": "4"
     }
   ]
 }

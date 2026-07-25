@@ -1,17 +1,16 @@
 import json
 
 from models.person import Person
-from models.marriage import Marriage
 
 
 class DataLoader:
+    """載入 family.json，建立 Person 資料。"""
 
-    def load(self, filename):
-
+    def load(self, filename: str) -> tuple[list[Person], str]:
         with open(filename, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        people = []
+        people: list[Person] = []
 
         for item in data["people"]:
             people.append(
@@ -21,22 +20,13 @@ class DataLoader:
                     gender=item["gender"],
                     father=item.get("father"),
                     mother=item.get("mother"),
+                    spouses=item.get("spouses", []),
+                    children=item.get("children", []),
                     custom_title=item.get("custom_title"),
-                    note=item.get("note"),
-                )
-            )
-
-        marriages = []
-
-        for item in data["marriages"]:
-            marriages.append(
-                Marriage(
-                    husband=item["husband"],
-                    wife=item["wife"],
                     note=item.get("note"),
                 )
             )
 
         applicant = data["applicant"]
 
-        return people, marriages, applicant
+        return people, applicant
