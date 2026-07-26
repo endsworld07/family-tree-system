@@ -8,30 +8,50 @@ from models.relationship import Relationship
 @dataclass(slots=True)
 class FamilyGroup:
     """
-    代表一個家庭（Family Unit）。
+    一個家庭單位（Family Unit）。
 
-    一個 FamilyGroup 以一位主要人物（head）為中心，
-    包含其主要配偶、其他配偶、子女，以及與其他 FamilyGroup
-    的父子關係。
+    FamilyGroup 是整張親屬關係圖的基本單位。
 
-    FamilyGroup 不負責任何版面配置（Layout）、
-    SVG 繪製或親屬稱謂判斷。
+    例如：
+
+        祖父
+        祖母
+
+    或
+
+        爸爸
+        媽媽
+
+    或
+
+          本人
+      妻子1   妻子2
+
+    規則：
+    ----------------------------
+    - head 為本組主要人物（直系血親）
+    - spouses 為所有配偶
+    - Group 內不畫任何連線
+    - 只有 FamilyGroup 與 FamilyGroup 之間才有連線
+    - Layout 由 LayoutEngine 負責
     """
+
+    # ==========================================================
+    # Basic
+    # ==========================================================
 
     # 唯一識別碼（通常使用 head.person.id）
     id: str
 
-    # 家庭代表人
+    # 本組主要人物
     head: Relationship
 
-    # 主要配偶
-    spouse: Relationship | None = None
+    # 所有配偶（0~N）
+    spouses: list[Relationship] = field(default_factory=list)
 
-    # 其他配偶（預留多配偶支援）
-    other_spouses: list[Relationship] = field(default_factory=list)
-
-    # 子女（Relationship）
-    children: list[Relationship] = field(default_factory=list)
+    # ==========================================================
+    # Tree
+    # ==========================================================
 
     # 上一代家庭
     parent: FamilyGroup | None = None
@@ -39,19 +59,42 @@ class FamilyGroup:
     # 下一代家庭
     child_groups: list[FamilyGroup] = field(default_factory=list)
 
+    # ==========================================================
+    # Layout（由 LayoutEngine 計算）
+    # ==========================================================
+
+    x: float = 0.0
+    y: float = 0.0
+
+    # ==========================================================
+    # Properties
+    # ==========================================================
+
     @property
     def has_spouse(self) -> bool:
-        """是否有主要配偶。"""
-        return self.spouse is not None
+        """是否有配偶。"""
+        return bool(self.spouses)
 
     @property
     def has_children(self) -> bool:
-        """是否有子女家庭。"""
+        """是否有下一代家庭。"""
         return bool(self.child_groups)
 
-    def add_child(self, child: Relationship) -> None:
-        self.children.append(child)
+    # ==========================================================
+    # Methods
+    # ==========================================================
 
-    def add_child_group(self, child: FamilyGroup) -> None:
+    def add_spouse(
+        self,
+        spouse: Relationship,
+    ) -> None:
+        """加入配偶。"""
+        self.spouses.append(spouse)
+
+    def add_child_group(
+        self,
+        child: FamilyGroup,
+    ) -> None:
+        """加入下一代家庭。"""
         self.child_groups.append(child)
         child.parent = self
