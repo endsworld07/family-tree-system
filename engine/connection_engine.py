@@ -1,33 +1,115 @@
-from models.connection import Connection
+from __future__ import annotations
 
+from dataclasses import dataclass
+
+from models.family_tree import FamilyTree
+
+
+@dataclass(slots=True)
+class Connection:
+    """
+    一條連接線。
+
+    (x1, y1) -------- (x2, y2)
+    """
+
+    x1: float
+    y1: float
+
+    x2: float
+    y2: float
+
+    kind: str
 
 class ConnectionEngine:
+    """
+    建立 FamilyTree 的連接線。
 
-    def build(self, nodes):
+    Responsibilities
+    ----------------
+    1. 建立父子線
+    2. 建立夫妻線
 
-        node_map = {}
+    Not Responsibilities
+    --------------------
+    - Layout
+    - SVG
+    """
 
-        for node in nodes:
-            node_map[node.relationship.title] = node
+    def __init__(
+        self,
+        tree: FamilyTree,
+    ) -> None:
 
-        connections = []
+        self.tree = tree
 
-        def connect(from_title, to_title):
+        self.connections: list[Connection] = []
 
-            if (
-                from_title in node_map
-                and to_title in node_map
-            ):
-                connections.append(
-                    Connection(
-                        from_node=node_map[from_title],
-                        to_node=node_map[to_title],
-                    )
+    # ======================================================
+    # Public
+    # ======================================================
+
+    def build(
+        self,
+    ) -> list[Connection]:
+
+        self.connections.clear()
+
+        self._build_parent_lines()
+
+        self._build_spouse_lines()
+
+        return self.connections  
+    
+    # ======================================================
+    # 父子線
+    # ======================================================   
+
+    def _build_parent_lines(
+        self,
+    ) -> None:
+
+        for group in self.tree.groups.values():
+
+            if group.parent is None:
+                continue
+
+            self.connections.append(
+
+                Connection(
+                    x1=group.parent.x,
+                    y1=group.parent.y,
+
+                    x2=group.x,
+                    y2=group.y,
+
+                    kind="parent",
                 )
 
-        connect("FATHER", "SELF")
-        connect("MOTHER", "SELF")
-        connect("SELF", "SPOUSE")
-        connect("SELF", "CHILD")
+            )
 
-        return connections
+    # ======================================================
+    # 夫妻線
+    # ====================================================== 
+    def _build_spouse_lines(
+        self,
+    ) -> None:
+
+        for group in self.tree.groups.values():
+
+            if not group.has_spouse:
+                continue
+
+            self.connections.append(
+
+                Connection(
+                    x1=group.x,
+                    y1=group.y,
+
+                    x2=group.x,
+                    y2=group.y,
+
+                    kind="spouse",
+                )
+
+            )  
