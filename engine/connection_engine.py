@@ -1,115 +1,146 @@
-from __future__ import annotations
+#==========================================================
+# ConnectionEngine 2.0
+# Part 1（正式版）
+# Data Model
+#==========================================================
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Optional
 
-from models.family_tree import FamilyTree
+from layout_engine import LayoutGroup, LayoutMember, LayoutResult
 
 
-@dataclass(slots=True)
+#==========================================================
+# Connection Type
+#==========================================================
+
+class ConnectionType(Enum):
+
+    MAIN = "main"          # 主幹
+    SIDE = "side"          # 旁系
+    SPOUSE = "spouse"      # 夫妻
+    GROUP = "group"        # Group 內部
+    VERTICAL = "vertical"  # 垂直線
+    HORIZONTAL = "horizontal"  # 水平線
+
+
+#==========================================================
+# Point
+#==========================================================
+
+@dataclass
+class Point:
+
+    x: float
+    y: float
+
+
+#==========================================================
+# Connection
+#==========================================================
+
+@dataclass
 class Connection:
-    """
-    一條連接線。
 
-    (x1, y1) -------- (x2, y2)
-    """
+    id: str
 
-    x1: float
-    y1: float
+    type: ConnectionType
 
-    x2: float
-    y2: float
+    start: Point
+    end: Point
 
-    kind: str
+    start_group: Optional[LayoutGroup] = None
+    end_group: Optional[LayoutGroup] = None
+
+    start_member: Optional[LayoutMember] = None
+    end_member: Optional[LayoutMember] = None
+
+    label: str = ""
+
+    color: str = "#000000"
+
+    width: float = 2
+
+    dashed: bool = False
+
+
+#==========================================================
+# Connection Result
+#==========================================================
+
+@dataclass
+class ConnectionResult:
+
+    connections: List[Connection] = field(default_factory=list)
+
+    main_connections: List[Connection] = field(default_factory=list)
+
+    side_connections: List[Connection] = field(default_factory=list)
+
+    spouse_connections: List[Connection] = field(default_factory=list)
+
+    connection_index: dict = field(default_factory=dict)
+
+    connection_count: int = 0
+
+
+#==========================================================
+# Connection Engine
+#==========================================================
 
 class ConnectionEngine:
-    """
-    建立 FamilyTree 的連接線。
 
-    Responsibilities
-    ----------------
-    1. 建立父子線
-    2. 建立夫妻線
+    #======================================================
 
-    Not Responsibilities
-    --------------------
-    - Layout
-    - SVG
-    """
+    def __init__(self):
 
-    def __init__(
-        self,
-        tree: FamilyTree,
-    ) -> None:
+        self.layout: Optional[LayoutResult] = None
 
-        self.tree = tree
+        self.result = ConnectionResult()
 
-        self.connections: list[Connection] = []
+    #======================================================
 
-    # ======================================================
-    # Public
-    # ======================================================
+    def build(self, layout: LayoutResult):
 
-    def build(
-        self,
-    ) -> list[Connection]:
+        self.layout = layout
 
-        self.connections.clear()
+        self.result = ConnectionResult()
 
-        self._build_parent_lines()
+        self._build_main_connections()
 
-        self._build_spouse_lines()
+        self._build_side_connections()
 
-        return self.connections  
-    
-    # ======================================================
-    # 父子線
-    # ======================================================   
+        self._build_spouse_connections()
 
-    def _build_parent_lines(
-        self,
-    ) -> None:
+        self._finalize()
 
-        for group in self.tree.groups.values():
+        return self.result
 
-            if group.parent is None:
-                continue
+    #======================================================
+    # Part 2
+    #======================================================
 
-            self.connections.append(
+    def _build_main_connections(self):
+        pass
 
-                Connection(
-                    x1=group.parent.x,
-                    y1=group.parent.y,
+    #======================================================
+    # Part 3
+    #======================================================
 
-                    x2=group.x,
-                    y2=group.y,
+    def _build_side_connections(self):
+        pass
 
-                    kind="parent",
-                )
+    #======================================================
+    # Part 4
+    #======================================================
 
-            )
+    def _build_spouse_connections(self):
+        pass
 
-    # ======================================================
-    # 夫妻線
-    # ====================================================== 
-    def _build_spouse_lines(
-        self,
-    ) -> None:
+    #======================================================
+    # Part 5
+    #======================================================
 
-        for group in self.tree.groups.values():
-
-            if not group.has_spouse:
-                continue
-
-            self.connections.append(
-
-                Connection(
-                    x1=group.x,
-                    y1=group.y,
-
-                    x2=group.x,
-                    y2=group.y,
-
-                    kind="spouse",
-                )
-
-            )  
+    def _finalize(self):
+        pass
