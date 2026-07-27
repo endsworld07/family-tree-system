@@ -1,49 +1,322 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
-
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>親屬關係表</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+            background: #f5f5f5;
+            color: #222;
+        }
 
-    <link
-        rel="stylesheet"
-        href="{{ url_for('static', filename='css/style.css') }}"
-    >
+        .page {
+            padding: 20px;
+        }
+
+        .title {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0 0 20px 0;
+        }
+
+        .layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .panel {
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.05);
+            padding: 16px;
+        }
+
+        .left {
+            width: 360px;
+            flex: 0 0 360px;
+        }
+
+        .right {
+            flex: 1;
+            min-width: 0;
+            overflow: auto;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin: 0 0 12px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e5e5e5;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 10px;
+            border: 1px solid #bbb;
+            border-radius: 6px;
+            font-size: 14px;
+            background: #fff;
+        }
+
+        .row-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .btn {
+            display: inline-block;
+            border: 0;
+            border-radius: 6px;
+            padding: 9px 14px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #1f6feb;
+            color: #fff;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: #fff;
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: #fff;
+        }
+
+        .btn-light {
+            background: #e5e7eb;
+            color: #111827;
+        }
+
+        .person-list {
+            margin-top: 18px;
+            border-top: 1px solid #e5e5e5;
+            padding-top: 12px;
+        }
+
+        .person-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            background: #fafafa;
+        }
+
+        .person-meta {
+            min-width: 0;
+        }
+
+        .person-name {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .person-detail {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+            word-break: break-all;
+        }
+
+        .person-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .svg-box {
+            width: 100%;
+            overflow: auto;
+            min-height: 600px;
+            background: #fff;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .hint {
+            color: #666;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+    </style>
 </head>
-
 <body>
+    <div class="page">
+        <div class="title">親屬關係表</div>
 
-    <h1>親屬關係表</h1>
+        <div class="layout">
+            <!-- 左邊：輸入 -->
+            <div class="panel left">
+                <div class="section-title">
 
-    <div class="tree">
+                {% if editing %}
+                編輯人物
+                {% else %}
+                新增人物
+                {% endif %}
 
-        <svg class="connections">
+                </div>
 
-                {{ svg|safe }}
+                {% if editing %}
+                <form method="post" action="/person/update/{{ editing.id }}">
+                {% else %}
+                <form method="post" action="/person/add">
+                {% endif %}
+                    <div class="form-group">
+                        <label>姓名</label>
+                        <input
+                            type="text"
+                            name="name"
+                            value="{{ editing.name if editing else '' }}"
+                            required>
+                    </div>
 
-        </svg>
+                    <div class="form-group">
+                        <label>稱謂</label>
 
-        {% for node in nodes %}
+                        <input
+                            type="text"
+                            name="label"
+                            value="{{ editing.label if editing else '' }}">
+                    </div>
 
-        <div
-            class="node"
-            style="--x: {{ node.x }}px; --y: {{ node.y }}px;"
-        >
+                    <div class="form-group">
+                        <label>父親（姓名）</label>
+                        <input
+                            type="text"
+                            name="father"
+                            value="{{ people[editing.father].name if editing and editing.father else '' }}">
+                    </div>
 
-            <div class="name">
-                {{ node.relationship.person.name }}
+                    <div class="form-group">
+                        <label>母親（姓名）</label>
+                        <input
+                            type="text"
+                            name="mother"
+                            value="{{ people[editing.mother].name if editing and editing.mother else '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>配偶（姓名）</label>
+                        <input
+                            type="text"
+                            name="spouse"
+                            value="{{ people[editing.spouses[0]].name if editing and editing.spouses else '' }}">
+                    </div>
+                    
+                    <div class="row-actions">
+                        <button class="btn btn-primary" type="submit">
+
+                        {% if editing %}
+                        更新人物
+                        {% else %}
+                        新增人物
+                        {% endif %}
+
+                        </button>
+                    </div>
+                </form>
+
+                <div class="row-actions" style="margin-top: 14px;">
+                    <form method="post" action="/generate" style="display:inline;">
+                        <button class="btn btn-secondary" type="submit">產生親屬關係表</button>
+                    </form>
+                </div>
+
+                <div class="person-list">
+                    <div class="section-title">目前人物</div>
+
+                    {% for person_id, person in people.items() %}
+                    <div class="person-item">
+                        <div class="person-meta">
+                            <div class="person-name">
+                                {{ person.name }}
+                                {% if person_id == applicant_id %}
+                                （申請人）
+                                {% endif %}
+                            </div>
+                            {% if person.father %}
+                            <div class="person-detail">
+                                父：{{ people[person.father].name }}
+                            </div>
+                            {% endif %}
+
+                            {% if person.mother %}
+                            <div class="person-detail">
+                                母：{{ people[person.mother].name }}
+                            </div>
+                            {% endif %}
+                        </div>
+                    <div class="person-actions">
+
+                        <a href="/person/edit/{{ person_id }}">
+                            <button class="btn btn-primary" type="button">
+                                編輯
+                            </button>
+                        </a>
+
+                        <form method="post" action="/person/delete/{{ person_id }}">
+                            <button class="btn btn-danger" type="submit">
+                                刪除
+                            </button>
+                        </form>
+
+                    </div>
+                        
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="hint">
+                    <strong>輸入說明</strong><br><br>
+
+                    姓名：必填。<br>
+
+                    稱謂：自行輸入，例如：本人、父、母、祖父。<br>
+
+                    父親、母親、配偶：直接輸入姓名即可，若人物不存在，系統將自動建立並建立關聯。
+                </div>
             </div>
 
-            <div class="title">
-                {{ node.relationship.display_title }}
+            <!-- 右邊：預覽 -->
+            <div class="panel right">
+                <div class="section-title">SVG 預覽</div>
+                <div class="svg-box">
+                    {{ svg|safe }}
+                </div>
             </div>
-
         </div>
-
-        {% endfor %}
-
     </div>
-
 </body>
-
 </html>

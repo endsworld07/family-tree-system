@@ -1,12 +1,14 @@
 #==========================================================
-# LayoutEngine 2.0
-# Part 1（正式版）
-# Data Model
+# LayoutEngine 3.0
+# Government Family Relationship Layout
+# Part 1
 #==========================================================
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 #==========================================================
@@ -14,51 +16,41 @@ from typing import List, Optional
 #==========================================================
 
 class GroupRole(Enum):
-    MAIN = "main"          # 主幹（祖先、父母、申請人）
-    SIDE = "side"          # 旁系（伯叔、兄弟姐妹、堂兄弟姐妹）
+
+    MAIN = "main"
+
+    SIDE = "side"
 
 
 #==========================================================
 # Member
-# 一個人
 #==========================================================
 
-@dataclass
+@dataclass(slots=True)
 class LayoutMember:
 
     id: str
+
     title: str
+
     name: str
 
     generation: int = 0
 
     width: int = 120
+
     height: int = 60
 
     x: float = 0
+
     y: float = 0
 
 
 #==========================================================
 # Group
-# 一個家庭單位
-#
-# 例如：
-#
-# 父母 Group
-#     父
-#     母
-#
-# 伯父母 Group
-#     伯父
-#     伯母
-#
-# 申請人 Group
-#     本人
-#     配偶
 #==========================================================
 
-@dataclass
+@dataclass(slots=True)
 class LayoutGroup:
 
     id: str
@@ -71,118 +63,128 @@ class LayoutGroup:
 
     members: List[LayoutMember] = field(default_factory=list)
 
-    # ---------- Main Tree ----------
     parent: Optional["LayoutGroup"] = None
+
     child: Optional["LayoutGroup"] = None
 
-    # ---------- Side Tree ----------
     side_groups: List["LayoutGroup"] = field(default_factory=list)
 
-    # ---------- Layout ----------
     x: float = 0
+
     y: float = 0
 
-    width: float = 0
-    height: float = 0
+    width: float = 120
+
+    height: float = 60
 
     level: int = 0
-
-    #======================================================
-
-    def add_member(self, member: LayoutMember):
-
-        self.members.append(member)
-
-    #======================================================
-
-    def add_side_group(self, group: "LayoutGroup"):
-
-        group.parent = self
-
-        self.side_groups.append(group)
-
-    #======================================================
-
-    def set_child(self, group: "LayoutGroup"):
-
-        self.child = group
-
-        group.parent = self
 
 
 #==========================================================
 # Layout Result
 #==========================================================
 
-@dataclass
+@dataclass(slots=True)
 class LayoutResult:
 
     groups: List[LayoutGroup] = field(default_factory=list)
 
     main_groups: List[LayoutGroup] = field(default_factory=list)
 
-    group_index: dict = field(default_factory=dict)
+    group_index: Dict[str, LayoutGroup] = field(default_factory=dict)
 
-    member_index: dict = field(default_factory=dict)
-
-    width: int = 0
-    height: int = 0
-
-    left: float = 0
-    top: float = 0
-    right: float = 0
-    bottom: float = 0
+    member_index: Dict[str, LayoutMember] = field(default_factory=dict)
 
     root: Optional[LayoutGroup] = None
 
-    version: str = ""
+    width: int = 0
+
+    height: int = 0
+
+    left: float = 0
+
+    top: float = 0
+
+    right: float = 0
+
+    bottom: float = 0
 
     group_count: int = 0
+
     member_count: int = 0
+
     main_group_count: int = 0
+
     side_group_count: int = 0
 
+    version: str = "LayoutEngine 3.0"
 
 #==========================================================
+# LayoutEngine 3.0
+# Part 2
 # Layout Engine
 #==========================================================
 
 class LayoutEngine:
 
+    #------------------------------------------------------
+    # Node Size
+    #------------------------------------------------------
+
     NODE_WIDTH = 120
+
     NODE_HEIGHT = 60
 
-    MEMBER_GAP = 18
+    MEMBER_GAP = 10
 
-    GROUP_GAP_Y = 120
+    #------------------------------------------------------
+    # Layout
+    #------------------------------------------------------
+
+    START_X = 500
+
+    START_Y = 60
+
+    MAIN_GAP_Y = 180
 
     SIDE_GAP_X = 220
 
-    START_X = 1000
+    CANVAS_PADDING = 50
 
-    START_Y = 120
-
-    #======================================================
+    #------------------------------------------------------
 
     def __init__(self):
+
+        self.relationships = []
 
         self.groups: List[LayoutGroup] = []
 
         self.main_groups: List[LayoutGroup] = []
 
+        self.group_map: Dict[str, LayoutGroup] = {}
+
         self.result = LayoutResult()
 
-    #======================================================
+    #------------------------------------------------------
+    # Public
+    #------------------------------------------------------
 
-    def build(self, relationship_engine):
+    def build(
+        self,
+        relationships
+    ) -> LayoutResult:
+
+        self.relationships = relationships
 
         self.groups.clear()
 
         self.main_groups.clear()
 
+        self.group_map.clear()
+
         self.result = LayoutResult()
 
-        self._build_group_tree(relationship_engine)
+        self._build_group_tree()
 
         self._layout_groups()
 
@@ -190,648 +192,460 @@ class LayoutEngine:
 
         self._build_result()
 
+        self._finalize_layout()
+
         return self.result
 
-    #==========================================================
-    # LayoutEngine 2.0
-    # Part 2（正式版）
-    # Build Group Tree
-    #==========================================================
+    #------------------------------------------------------
+    # Helper
+    #------------------------------------------------------
 
-    def _build_group_tree(self, relationship_engine):
+    def _new_group(
 
-        #--------------------------------------------------
-        # 建立所有 Group
-        #--------------------------------------------------
+        self,
 
-        group_map = {}
+        group_id: str,
 
-        for person in relationship_engine.nodes.values():
+        title: str,
 
-            #--------------------------------------------------
-            # 每個 Person 都應已經具有 group_id
-            # RelationshipEngine 負責決定：
-            #
-            # 父母 -> 同一個 group_id
-            # 伯父母 -> 同一個 group_id
-            # 本人+配偶 -> 同一個 group_id
-            # 兄弟 -> 各自 group_id
-            # 堂兄弟 -> 各自 group_id
-            #--------------------------------------------------
+        role: GroupRole,
 
-            group_id = person.group_id
+        generation: int,
 
-            if group_id not in group_map:
+    ) -> LayoutGroup:
 
-                role = (
-                    GroupRole.MAIN
-                    if getattr(person, "is_main_line", False)
-                    else GroupRole.SIDE
-                )
+        group = LayoutGroup(
 
-                group = LayoutGroup(
-                    id=group_id,
-                    title=person.title,
-                    role=role,
-                    generation=person.generation,
-                )
+            id=group_id,
 
-                group_map[group_id] = group
+            title=title,
 
-                self.groups.append(group)
+            role=role,
 
-            member = LayoutMember(
-                id=person.id,
-                title=person.title,
-                name=person.name,
-                generation=person.generation,
-            )
+            generation=generation,
 
-            group_map[group_id].add_member(member)
-
-        #--------------------------------------------------
-        # 主幹排序
-        #--------------------------------------------------
-
-        self.main_groups = sorted(
-            [
-                g
-                for g in self.groups
-                if g.role == GroupRole.MAIN
-            ],
-            key=lambda g: g.generation
         )
 
-        #--------------------------------------------------
-        # 建立主幹
-        #--------------------------------------------------
+        self.groups.append(group)
 
-        for index in range(len(self.main_groups) - 1):
+        self.group_map[group_id] = group
 
-            current_group = self.main_groups[index]
-            next_group = self.main_groups[index + 1]
+        return group
 
-            current_group.set_child(next_group)
+    #------------------------------------------------------
 
-        #--------------------------------------------------
-        # 建立旁系
-        #--------------------------------------------------
+    def _get_group(
 
-        for group in self.groups:
+        self,
 
-            if group.role != GroupRole.SIDE:
-                continue
+        group_id: str,
 
-            first_member = group.members[0]
+    ) -> Optional[LayoutGroup]:
 
-            parent_group_id = getattr(first_member, "parent_group_id", None)
+        return self.group_map.get(group_id)
+    
+#==========================================================
+# LayoutEngine 3.0
+# Part 2（Government Edition）
+# Layout Engine
+#==========================================================
 
-            if parent_group_id is None:
-                continue
+class LayoutEngine:
 
-            if parent_group_id not in group_map:
-                continue
+    #------------------------------------------------------
+    # Node Size
+    #------------------------------------------------------
 
-            group_map[parent_group_id].add_side_group(group)
+    NODE_WIDTH = 120
+    NODE_HEIGHT = 60
 
-        #--------------------------------------------------
-        # SideGroup 排序
-        #
-        # 完全依照 RelationshipEngine 建立順序
-        # 不依稱謂
-        # 不依年齡
-        #--------------------------------------------------
+    MEMBER_GAP = 10
 
-        for group in self.groups:
+    #------------------------------------------------------
+    # Layout
+    #------------------------------------------------------
 
-            if len(group.side_groups) <= 1:
-                continue
+    START_X = 500
+    START_Y = 60
 
-            group.side_groups.sort(
-                key=lambda g: getattr(
-                    g.members[0],
-                    "input_order",
-                    0
-                    )
-                )
+    MAIN_GAP_Y = 180
+    SIDE_GAP_X = 220
 
-    #==========================================================
-    # LayoutEngine 2.0
-    # Part 3（正式版）
-    # Layout Main Groups & Side Groups
-    #==========================================================
+    CANVAS_PADDING = 50
 
-    def _layout_groups(self):
+    #------------------------------------------------------
 
-        #--------------------------------------------------
-        # 主幹排列
-        #--------------------------------------------------
+    def __init__(self):
+
+        self.groups: List[LayoutGroup] = []
+
+        self.main_groups: List[LayoutGroup] = []
+
+        self.group_map: Dict[str, LayoutGroup] = {}
+
+        self.result = LayoutResult()
+
+    #======================================================
+    # Public
+    #======================================================
+
+    def build(
+        self,
+        groups: List[LayoutGroup]
+    ) -> LayoutResult:
+        """
+        groups 必須由 FamilyGroupBuilder 建立。
+
+        LayoutEngine 不負責：
+            - 判斷親屬
+            - 建立夫妻
+            - 建立父母
+            - 建立主幹
+
+        LayoutEngine 只負責：
+
+            Group
+                ↓
+
+            X、Y
+
+                ↓
+
+            LayoutResult
+        """
+
+        self.groups = list(groups)
+
+        self.main_groups = [
+
+            group
+
+            for group in self.groups
+
+            if group.role == GroupRole.MAIN
+
+        ]
+
+        self.group_map = {
+
+            group.id: group
+
+            for group in self.groups
+
+        }
+
+        self.result = LayoutResult()
+
+        self._layout_groups()
+
+        self._layout_members()
+
+        self._build_result()
+
+        self._finalize_layout()
+
+        return self.result
+
+    #======================================================
+    # Helper
+    #======================================================
+
+    def get_group(
+        self,
+        group_id: str
+    ) -> Optional[LayoutGroup]:
+
+        return self.group_map.get(group_id)
+
+#==========================================================
+# LayoutEngine 3.0
+# Part 4
+# Fixed Main Line Layout
+#==========================================================
+
+    #======================================================
+    # Main Line
+    #======================================================
+
+    def _layout_main_line(self):
+
+        """
+        Government Fixed Main Line
+
+        烈祖
+          │
+        太祖
+          │
+        高祖
+          │
+        曾祖
+          │
+        祖父母
+          │
+        父母
+          │
+        申請人
+        """
+
+        if not self.main_groups:
+            return
+
+        self.main_groups.sort(
+            key=lambda group: group.generation
+        )
 
         current_y = self.START_Y
 
-        for level, group in enumerate(self.main_groups):
+        previous_group = None
 
-            group.level = level
+        for group in self.main_groups:
 
             group.x = self.START_X
+
             group.y = current_y
 
-            current_y += self.GROUP_GAP_Y
+            if previous_group is not None:
 
-        #--------------------------------------------------
-        # Side Group 排列
-        #
-        # 規則：
-        #
-        # 左1 → 右1 → 左2 → 右2 → 左3 → 右3
-        #
-        # 完全依 input_order
-        #--------------------------------------------------
+                previous_group.child = group
 
-        for parent in self.main_groups:
+                group.parent = previous_group
 
-            if not parent.side_groups:
-                continue
+            previous_group = group
 
-            left_index = 1
-            right_index = 1
+            current_y += self.MAIN_GAP_Y
 
-            for index, group in enumerate(parent.side_groups):
 
-                #------------------------------
-                # 奇數放左
-                #------------------------------
+    #======================================================
+    # Update Layout
+    #======================================================
+
+    def _layout_groups(self):
+
+        """
+        Government Layout
+
+        1. 排主幹
+        2. 排旁系
+        """
+
+        self._layout_main_line()
+
+        self._layout_side_groups()
+
+#==========================================================
+# LayoutEngine 3.0
+# Part 5
+# Government Fixed Order
+#==========================================================
+
+    GOVERNMENT_ORDER = {
+
+        "烈祖父母": 1,
+
+        "太祖父母": 2,
+
+        "高祖父母": 3,
+
+        "曾祖父母": 4,
+
+        "祖父母": 5,
+
+        "父母": 6,
+
+        "申請人": 7,
+
+    }
+
+    #------------------------------------------------------
+
+    def _group_order(
+        self,
+        group: LayoutGroup
+    ) -> int:
+
+        return self.GOVERNMENT_ORDER.get(
+            group.title,
+            999
+        )
+
+    #------------------------------------------------------
+
+    def _layout_main_line(self):
+
+        """
+        政府固定主幹
+
+        烈祖父母
+
+        太祖父母
+
+        高祖父母
+
+        曾祖父母
+
+        祖父母
+
+        父母
+
+        申請人
+        """
+
+        ordered = sorted(
+
+            self.main_groups,
+
+            key=self._group_order
+
+        )
+
+        current_y = self.START_Y
+
+        previous = None
+
+        for group in ordered:
+
+            group.x = self.START_X
+
+            group.y = current_y
+
+            if previous:
+
+                previous.child = group
+
+                group.parent = previous
+
+            previous = group
+
+            current_y += self.MAIN_GAP_Y
+
+        self.main_groups = ordered
+
+#==========================================================
+# LayoutEngine 3.0
+# Part 6
+# Government Side Layout
+#==========================================================
+
+    SIDE_VERTICAL_GAP = 90
+
+    #------------------------------------------------------
+
+    def _layout_side_groups(self):
+
+        """
+        Government Side Layout
+
+        主幹固定置中
+
+                主幹
+
+        左側 side_groups
+
+        右側 side_groups
+
+        左右完全依照輸入順序
+        """
+
+        for main_group in self.main_groups:
+
+            left_index = 0
+            right_index = 0
+
+            for index, side_group in enumerate(main_group.side_groups):
+
+                #------------------------------------------
+                # 左側
+                #------------------------------------------
+
                 if index % 2 == 0:
 
-                    group.x = (
-                        parent.x
-                        - self.SIDE_GAP_X * left_index
+                    side_group.x = (
+                        main_group.x
+                        - self.SIDE_GAP_X
+                    )
+
+                    side_group.y = (
+                        main_group.y
+                        + left_index * self.SIDE_VERTICAL_GAP
                     )
 
                     left_index += 1
 
-                #------------------------------
-                # 偶數放右
-                #------------------------------
+                #------------------------------------------
+                # 右側
+                #------------------------------------------
+
                 else:
 
-                    group.x = (
-                        parent.x
-                        + self.SIDE_GAP_X * right_index
+                    side_group.x = (
+                        main_group.x
+                        + self.SIDE_GAP_X
+                    )
+
+                    side_group.y = (
+                        main_group.y
+                        + right_index * self.SIDE_VERTICAL_GAP
                     )
 
                     right_index += 1
 
-                group.y = parent.y
+#==========================================================
+# LayoutEngine 3.0
+# Part 7
+# Layout Member
+#==========================================================
 
-                group.level = parent.level
+    MEMBER_VERTICAL_GAP = 70
 
-        #--------------------------------------------------
-        # 計算 Group 大小
-        #--------------------------------------------------
-
-        for group in self.groups:
-
-            member_count = len(group.members)
-
-            if member_count == 0:
-
-                group.width = self.NODE_WIDTH
-                group.height = self.NODE_HEIGHT
-
-                continue
-
-            #------------------------------------------
-            # 一對夫妻上下排列
-            #------------------------------------------
-
-            if member_count == 2:
-
-                group.width = self.NODE_WIDTH
-
-                group.height = (
-                    self.NODE_HEIGHT * 2
-                    + self.MEMBER_GAP
-                )
-
-            #------------------------------------------
-            # 單人
-            #------------------------------------------
-
-            else:
-
-                group.width = self.NODE_WIDTH
-
-                group.height = self.NODE_HEIGHT
-
-        #--------------------------------------------------
-        # 更新 LayoutResult 尺寸
-        #--------------------------------------------------
-
-        if not self.groups:
-
-            self.result.width = 0
-            self.result.height = 0
-            return
-
-        max_right = max(
-            g.x + g.width
-            for g in self.groups
-        )
-
-        max_bottom = max(
-            g.y + g.height
-            for g in self.groups
-        )
-
-        min_left = min(
-            g.x
-            for g in self.groups
-        )
-
-        self.result.width = int(max_right - min_left + self.START_X)
-
-        self.result.height = int(max_bottom + self.GROUP_GAP_Y)
-
-    #==========================================================
-    # LayoutEngine 2.0
-    # Part 4（正式版）
-    # Layout Members
-    #==========================================================
+    #------------------------------------------------------
 
     def _layout_members(self):
 
+        """
+        每個 Group 內的人員排列。
+
+        規則：
+
+        夫妻：
+            上下排列
+
+        單人：
+            置中
+
+        LayoutEngine 不判斷親屬，
+        只依 members 的順序排版。
+        """
+
         for group in self.groups:
 
-            member_count = len(group.members)
-
-            if member_count == 0:
+            if not group.members:
                 continue
 
-            #--------------------------------------------------
-            # 單人 Group
-            #
-            # 兄弟
-            # 姐妹
-            # 堂兄弟
-            # 堂姐妹
-            #--------------------------------------------------
+            member_x = group.x
 
-            if member_count == 1:
-
-                member = group.members[0]
-
-                member.x = group.x
-                member.y = group.y
-
-                continue
-
-            #--------------------------------------------------
-            # 夫妻 Group
-            #
-            # 男在上
-            # 女在下
-            #
-            # 如果資料只有一人
-            # 則仍維持目前位置
-            #--------------------------------------------------
-
-            if member_count == 2:
-
-                husband = None
-                wife = None
-
-                for member in group.members:
-
-                    title = member.title
-
-                    #------------------------------------------
-                    # 男性稱謂
-                    #------------------------------------------
-
-                    if title in {
-
-                        "烈祖父",
-                        "太祖父",
-                        "天祖父",
-                        "高祖父",
-                        "曾祖父",
-                        "祖父",
-                        "父",
-                        "伯父",
-                        "叔父",
-                        "姑丈",
-                        "姨丈",
-                        "舅父",
-                        "兄弟",
-                        "堂兄弟",
-                        "申請人"
-
-                    }:
-
-                        husband = member
-
-                    else:
-
-                        wife = member
-
-                #------------------------------------------
-                # 若資料不足
-                #------------------------------------------
-
-                if husband is None:
-
-                    husband = group.members[0]
-
-                if wife is None:
-
-                    wife = group.members[1]
-
-                husband.x = group.x
-                husband.y = group.y
-
-                wife.x = group.x
-                wife.y = (
-                    group.y
-                    + self.NODE_HEIGHT
-                    + self.MEMBER_GAP
-                )
-
-                continue
-
-            #--------------------------------------------------
-            # 三人以上（預留）
-            #--------------------------------------------------
-
-            current_y = group.y
+            member_y = group.y
 
             for member in group.members:
 
-                member.x = group.x
-                member.y = current_y
+                member.width = self.NODE_WIDTH
 
-                current_y += (
+                member.height = self.NODE_HEIGHT
+
+                member.x = member_x
+
+                member.y = member_y
+
+                member_y += (
                     self.NODE_HEIGHT
                     + self.MEMBER_GAP
                 )
 
-            group.height = (
-                member_count * self.NODE_HEIGHT
-                + (member_count - 1) * self.MEMBER_GAP
+            group.width = self.NODE_WIDTH
+
+            group.height = max(
+                self.NODE_HEIGHT,
+                len(group.members)
+                * self.NODE_HEIGHT
+                + (len(group.members) - 1)
+                * self.MEMBER_GAP
             )
-
-    #==========================================================
-    # LayoutEngine 2.0
-    # Part 5（正式版）
-    # Build Layout Result
-    #==========================================================
-
-    def _build_result(self):
-
-        #--------------------------------------------------
-        # 清空結果
-        #--------------------------------------------------
-
-        self.result.groups.clear()
-
-        #--------------------------------------------------
-        # 收集所有 Group
-        #--------------------------------------------------
-
-        self.result.groups.extend(self.groups)
-
-        #--------------------------------------------------
-        # 計算整體範圍
-        #--------------------------------------------------
-
-        if not self.groups:
-
-            self.result.width = 0
-            self.result.height = 0
-            return
-
-        min_x = min(group.x for group in self.groups)
-        min_y = min(group.y for group in self.groups)
-
-        max_x = max(group.x + group.width for group in self.groups)
-        max_y = max(group.y + group.height for group in self.groups)
-
-        #--------------------------------------------------
-        # 若座標有負值，全部平移
-        #--------------------------------------------------
-
-        offset_x = 0
-        offset_y = 0
-
-        if min_x < 0:
-            offset_x = abs(min_x) + 50
-
-        if min_y < 0:
-            offset_y = abs(min_y) + 50
-
-        if offset_x or offset_y:
-
-            for group in self.groups:
-
-                group.x += offset_x
-                group.y += offset_y
-
-                for member in group.members:
-
-                    member.x += offset_x
-                    member.y += offset_y
-
-        #--------------------------------------------------
-        # 重新計算畫布大小
-        #--------------------------------------------------
-
-        max_x = max(group.x + group.width for group in self.groups)
-        max_y = max(group.y + group.height for group in self.groups)
-
-        self.result.width = int(max_x + 50)
-        self.result.height = int(max_y + 50)
-
-        #--------------------------------------------------
-        # 主幹排序（由上而下）
-        #--------------------------------------------------
-
-        self.main_groups.sort(
-            key=lambda g: (
-                g.generation,
-                g.y
-            )
-        )
-
-        #--------------------------------------------------
-        # Side Group 排序（左→右）
-        #--------------------------------------------------
-
-        for group in self.main_groups:
-
-            group.side_groups.sort(
-                key=lambda g: g.x
-            )
-
-        #--------------------------------------------------
-        # 所有 Group 排序
-        # 方便 SvgRenderer 依序輸出
-        #--------------------------------------------------
-
-        self.result.groups.sort(
-            key=lambda g: (
-                g.level,
-                g.x,
-                g.y
-            )
-        )
-
-        return self.result
-
-    #==========================================================
-    # LayoutEngine 2.0
-    # Part 6（正式版）
-    # Finalize Layout
-    #==========================================================
-
-    def _finalize_layout(self):
-
-        #--------------------------------------------------
-        # 建立索引
-        #--------------------------------------------------
-
-        self.result.group_index = {}
-        self.result.member_index = {}
-
-        for group in self.result.groups:
-
-            self.result.group_index[group.id] = group
-
-            for member in group.members:
-
-                self.result.member_index[member.id] = member
-
-        #--------------------------------------------------
-        # Main Groups
-        #--------------------------------------------------
-
-        self.result.main_groups = list(self.main_groups)
-
-        #--------------------------------------------------
-        # Group 排序
-        #
-        # 依：
-        #   1. 世代
-        #   2. Y
-        #   3. X
-        #--------------------------------------------------
-
-        self.result.groups.sort(
-            key=lambda g: (
-                g.generation,
-                g.y,
-                g.x
-            )
-        )
-
-        #--------------------------------------------------
-        # Main Group 檢查
-        #--------------------------------------------------
-
-        previous = None
-
-        for group in self.main_groups:
-
-            if previous is not None:
-
-                if previous.child != group:
-
-                    raise RuntimeError(
-                        f"Main Line Broken : {previous.title}"
-                    )
-
-            previous = group
-
-        #--------------------------------------------------
-        # Side Group 排序
-        #
-        # 左 -> 右
-        #--------------------------------------------------
-
-        for group in self.main_groups:
-
-            group.side_groups.sort(
-                key=lambda g: g.x
-            )
-
-        #--------------------------------------------------
-        # Bounding Box
-        #--------------------------------------------------
-
-        if self.result.groups:
-
-            left = min(g.x for g in self.result.groups)
-            top = min(g.y for g in self.result.groups)
-
-            right = max(
-                g.x + g.width
-                for g in self.result.groups
-            )
-
-            bottom = max(
-                g.y + g.height
-                for g in self.result.groups
-            )
-
-            self.result.left = left
-            self.result.top = top
-            self.result.right = right
-            self.result.bottom = bottom
-
-        else:
-
-            self.result.left = 0
-            self.result.top = 0
-            self.result.right = 0
-            self.result.bottom = 0
-
-        #--------------------------------------------------
-        # Main Line Root
-        #--------------------------------------------------
-
-        self.result.root = (
-            self.main_groups[0]
-            if self.main_groups
-            else None
-        )
-
-        #--------------------------------------------------
-        # 統計
-        #--------------------------------------------------
-
-        self.result.group_count = len(self.result.groups)
-
-        self.result.member_count = sum(
-            len(g.members)
-            for g in self.result.groups
-        )
-
-        self.result.main_group_count = len(
-            self.main_groups
-        )
-
-        self.result.side_group_count = sum(
-            len(g.side_groups)
-            for g in self.main_groups
-        )
-
-        #--------------------------------------------------
-        # Layout Version
-        #--------------------------------------------------
-
-        self.result.version = "LayoutEngine 2.0"
-
-        #--------------------------------------------------
-        # 完成
-        #--------------------------------------------------
-
-        return self.result
