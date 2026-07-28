@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from models import Person, Position
+from models import Person
 from layout_engine import LayoutResult
 from connection_engine import ConnectionResult, Connection
 
@@ -16,200 +16,162 @@ class SvgRenderResult:
 
 
 class SvgRenderer:
-    """
-    將 LayoutResult.positions 與 ConnectionResult.connections
-    轉成 SVG。
-    """
-
     NODE_WIDTH = 120
     NODE_HEIGHT = 60
-
     COLUMN_GAP = 180
-    ROW_GAP = 90
-
+    ROW_GAP = 75
     PADDING_X = 60
     PADDING_Y = 60
+    ELBOW_MARGIN = 24
 
     def __init__(self):
         self.layout_result: Optional[LayoutResult] = None
         self.connection_result: Optional[ConnectionResult] = None
         self.people: Dict[str, Person] = {}
         self.result = SvgRenderResult()
-
         self._elements: List[str] = []
-        self._origin_x: int = 0
-        self._origin_y: int = 0
+        self._origin_x = 0
+        self._origin_y = 0
 
-    def render(
-        self,
-        people: Dict[str, Person],
-        layout_result: LayoutResult,
-        connection_result: ConnectionResult,
-    ) -> SvgRenderResult:
+    def render(self, people: Dict[str, Person], layout_result: LayoutResult,
+               connection_result: ConnectionResult) -> SvgRenderResult:
         self.people = people
         self.layout_result = layout_result
         self.connection_result = connection_result
         self.result = SvgRenderResult()
         self._elements = []
-
         self._prepare_canvas()
         self._begin_svg()
         self._draw_connections()
         self._draw_nodes()
         self._end_svg()
-
         return self.result
 
-    # --------------------------------------------------
-    # Canvas
-    # --------------------------------------------------
     def _prepare_canvas(self) -> None:
         if self.layout_result is None or not self.layout_result.positions:
-            self._origin_x = 0
-            self._origin_y = 0
-            self.result.width = 0
-            self.result.height = 0
             return
-
-        columns = [pos.column for pos in self.layout_result.positions.values()]
-        rows = [pos.row for pos in self.layout_result.positions.values()]
-
-        min_col = min(columns)
-        max_col = max(columns)
-        min_row = min(rows)
-        max_row = max(rows)
-
+        columns = [position.column for position in self.layout_result.positions.values()]
+        rows = [position.row for position in self.layout_result.positions.values()]
+        min_col, max_col = min(columns), max(columns)
+        min_row, max_row = min(rows), max(rows)
         self._origin_x = self.PADDING_X - min_col * self.COLUMN_GAP
         self._origin_y = self.PADDING_Y - min_row * self.ROW_GAP
-
-        self.result.width = int((max_col - min_col + 1) * self.COLUMN_GAP + self.PADDING_X * 2)
-        self.result.height = int((max_row - min_row + 1) * self.ROW_GAP + self.PADDING_Y * 2)
+        self.result.width = (max_col - min_col + 1) * self.COLUMN_GAP + self.PADDING_X * 2
+        self.result.height = (max_row - min_row + 1) * self.ROW_GAP + self.PADDING_Y * 2
 
     def _begin_svg(self) -> None:
-        self._elements.append(
-            f'<svg xmlns="http://www.w3.org/2000/svg" '
-            f'width="{self.result.width}" '
-            f'height="{self.result.height}" '
-            f'viewBox="0 0 {self.result.width} {self.result.height}">'
-        )
-        self._elements.append(self._style())
+        self._elements.extend([
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{self.result.width}" height="{self.result.height}" viewBox="0 0 {self.result.width} {self.result.height}">',
+            '<style>text{font-family:"Microsoft JhengHei","PMingLiU",sans-serif;fill:#000}.person-box{fill:#fff;stroke:#000;stroke-width:1.5}.person-box.inactive{fill:#eeeeee;stroke:#999}.person-box.applicant{fill:#fff3a3;stroke:#c78300;stroke-width:2.5}.inactive-text{fill:#777}.connection-line,.connection-bar{stroke:#000;stroke-width:2;fill:none;stroke-linecap:square;stroke-linejoin:miter}.name-text{font-size:14px;text-anchor:middle;dominant-baseline:middle}.label-text{font-size:13px;text-anchor:middle;dominant-baseline:middle}</style>',
+        ])
 
     def _end_svg(self) -> None:
-        self._elements.append("</svg>")
-        self.result.svg = "\n".join(self._elements)
+        self._elements.append('</svg>')
+        self.result.svg = '\n'.join(self._elements)
 
-    def _style(self) -> str:
-        return """
-<style>
-text {
-    font-family: "Microsoft JhengHei", "PMingLiU", sans-serif;
-    fill: #000;
-}
-
-.person-box {
-    fill: #fff;
-    stroke: #000;
-    stroke-width: 1.5;
-}
-
-.connection-line {
-    stroke: #000;
-    stroke-width: 2;
-    fill: none;
-    stroke-linecap: square;
-    stroke-linejoin: miter;
-}
-
-.name-text {
-    font-size: 14px;
-    text-anchor: middle;
-    dominant-baseline: middle;
-}
-
-.label-text {
-    font-size: 13px;
-    text-anchor: middle;
-    dominant-baseline: middle;
-}
-</style>
-""".strip()
-
-    # --------------------------------------------------
-    # Draw Connections
-    # --------------------------------------------------
     def _draw_connections(self) -> None:
-        if self.layout_result is None or self.connection_result is None:
+        if self.connection_result is None:
             return
+        grouped_children = set()
+        for group in self.connection_result.family_groups:
+            grouped_children.update(group.children)
+            path = self._family_group_path(group)
+            if path:
+                self._elements.append(path)
+        # A malformed/incomplete family group can still use the old parent fallback.
+        for connection in self.connection_result.parent_connections:
+            if connection.target not in grouped_children:
+                path = self._parent_path(connection)
+                if path:
+                    self._elements.append(path)
 
-        for conn in self.connection_result.connections:
-            points = self._connection_points(conn)
-            if len(points) < 2:
-                continue
+    def _person_center(self, person_id: str) -> Optional[Tuple[int, int]]:
+        if self.layout_result is None or person_id not in self.layout_result.positions:
+            return None
+        position = self.layout_result.positions[person_id]
+        return self._origin_x + position.column * self.COLUMN_GAP, self._origin_y + position.row * self.ROW_GAP
 
-            d = self._polyline_points(points)
-            self._elements.append(
-                f'<polyline class="connection-line" points="{d}" />'
-            )
+    def _person_box_top(self, person_id: str) -> Optional[Tuple[int, int]]:
+        center = self._person_center(person_id)
+        return None if center is None else (center[0], center[1] - self.NODE_HEIGHT // 2)
 
-    def _connection_points(self, conn: Connection) -> List[tuple[int, int]]:
+    def _person_box_bottom(self, person_id: str) -> Optional[Tuple[int, int]]:
+        center = self._person_center(person_id)
+        return None if center is None else (center[0], center[1] + self.NODE_HEIGHT // 2)
+
+    def _parent_path(self, connection: Connection) -> str:
+        source = self._person_box_bottom(connection.source)
+        target = self._person_box_top(connection.target)
+        if source is None or target is None:
+            return ''
+        sx, sy = self._line_start_after_spouse(connection.source, connection.target, source)
+        tx, ty = target
+        junction_y = min(ty - self.ELBOW_MARGIN, sy + self.ELBOW_MARGIN)
+        return f'<path class="connection-line" d="M {sx} {sy} L {sx} {junction_y} L {tx} {junction_y} L {tx} {ty}" />'
+
+    def _family_group_path(self, group) -> str:
+        children = [child for child in group.children if self._person_box_top(child) is not None]
+        # The person recorded as the mother is the spouse whose branch owns
+        # these children.  Fall back to the father for one-parent data.
+        anchor_id = group.mother if self._person_box_bottom(group.mother) is not None else group.father
+        anchor = self._person_box_bottom(anchor_id) if anchor_id else None
+        if anchor is None or not children:
+            return ''
+        targets = [self._person_box_top(child) for child in children]
+        targets = [target for target in targets if target is not None]
+        # A family is drawn once: parent -> one horizontal bar -> every child.
+        ax, ay = self._line_start_after_spouse(anchor_id, children[0], anchor)
+        junction_y = min(target[1] for target in targets) - self.ELBOW_MARGIN
+        if junction_y <= ay:
+            return ''
+        left_x = min(target[0] for target in targets)
+        right_x = max(target[0] for target in targets)
+        parts = [f'<path class="connection-bar" d="M {ax} {ay} L {ax} {junction_y}" />']
+        if left_x != right_x:
+            parts.append(f'<path class="connection-bar" d="M {left_x} {junction_y} L {right_x} {junction_y}" />')
+        for child_x, child_top_y in targets:
+            if child_x != ax or child_top_y != junction_y:
+                parts.append(f'<path class="connection-bar" d="M {child_x} {junction_y} L {child_x} {child_top_y}" />')
+        return ''.join(parts)
+
+    def _line_start_after_spouse(self, source_id: str, target_id: str,
+                                 source_bottom: Tuple[int, int]) -> Tuple[int, int]:
+        """Do not draw a parent line through the spouse placed below it."""
         if self.layout_result is None:
-            return []
+            return source_bottom
+        source_pos = self.layout_result.positions.get(source_id)
+        target_pos = self.layout_result.positions.get(target_id)
+        if source_pos is None or target_pos is None:
+            return source_bottom
+        x, y = source_bottom
+        for spouse_id in self.layout_result.spouse_lookup:
+            spouse_pos = self.layout_result.positions.get(spouse_id)
+            if spouse_pos is None:
+                continue
+            if spouse_pos.column == source_pos.column and source_pos.row < spouse_pos.row < target_pos.row:
+                spouse_bottom = self._person_box_bottom(spouse_id)
+                if spouse_bottom is not None:
+                    y = max(y, spouse_bottom[1])
+        return x, y
 
-        src = self.layout_result.positions.get(conn.source)
-        tgt = self.layout_result.positions.get(conn.target)
-
-        if src is None or tgt is None:
-            return []
-
-        sx = self._origin_x + src.column * self.COLUMN_GAP
-        sy = self._origin_y + src.row * self.ROW_GAP
-        tx = self._origin_x + tgt.column * self.COLUMN_GAP
-        ty = self._origin_y + tgt.row * self.ROW_GAP
-
-        # 簡單做法：先以直線連接
-        # 後續若要更像你的圖，可以再改成折線
-        return [(sx, sy), (tx, ty)]
-
-    def _polyline_points(self, points: List[tuple[int, int]]) -> str:
-        return " ".join(f"{x},{y}" for x, y in points)
-
-    # --------------------------------------------------
-    # Draw Nodes
-    # --------------------------------------------------
     def _draw_nodes(self) -> None:
         if self.layout_result is None:
             return
-
-        for person_id, pos in self.layout_result.positions.items():
+        for person_id, position in self.layout_result.positions.items():
             person = self.people.get(person_id)
             if person is None:
                 continue
-
-            x = self._origin_x + pos.column * self.COLUMN_GAP - self.NODE_WIDTH // 2
-            y = self._origin_y + pos.row * self.ROW_GAP - self.NODE_HEIGHT // 2
-
+            x = self._origin_x + position.column * self.COLUMN_GAP - self.NODE_WIDTH // 2
+            y = self._origin_y + position.row * self.ROW_GAP - self.NODE_HEIGHT // 2
             self._elements.append(self._draw_person_box(x, y, person))
 
     def _draw_person_box(self, x: int, y: int, person: Person) -> str:
-        name = self._escape(person.name)
-        label = self._escape(person.label or "")
+        name, label = self._escape(person.name), self._escape(person.label or '')
+        is_applicant = person.label.strip() == "申請人"
+        state_class = " applicant" if is_applicant else ("" if person.is_exhumation else " inactive")
+        text_class = "" if is_applicant or person.is_exhumation else " inactive-text"
+        return f'<g><rect class="person-box{state_class}" x="{x}" y="{y}" width="{self.NODE_WIDTH}" height="{self.NODE_HEIGHT}" rx="0" ry="0" /><text class="name-text{text_class}" x="{x + self.NODE_WIDTH / 2}" y="{y + 24}">{name}</text><text class="label-text{text_class}" x="{x + self.NODE_WIDTH / 2}" y="{y + 42}">{label}</text></g>'
 
-        name_y = y + 24
-        label_y = y + 42
-
-        return (
-            f'<g>'
-            f'<rect class="person-box" x="{x}" y="{y}" width="{self.NODE_WIDTH}" height="{self.NODE_HEIGHT}" rx="0" ry="0" />'
-            f'<text class="name-text" x="{x + self.NODE_WIDTH / 2}" y="{name_y}">{name}</text>'
-            f'<text class="label-text" x="{x + self.NODE_WIDTH / 2}" y="{label_y}">{label}</text>'
-            f'</g>'
-        )
-
-    def _escape(self, text: str) -> str:
-        return (
-            text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&apos;")
-        )
+    @staticmethod
+    def _escape(text: str) -> str:
+        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&apos;')

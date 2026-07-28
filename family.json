@@ -1,57 +1,37 @@
 {
-  "applicant": "P001",
+  "applicant": "P003",
   "people": [
     {
-      "id": "P001",
-      "name": "王小明",
-      "label": "申請人",
-      "father": "P002",
-      "mother": "P003",
-      "spouses": [
-        "P004"
-      ]
-    },
-    {
       "id": "P002",
-      "name": "王二明",
-      "label": "父",
+      "name": "陳惠美",
+      "label": "",
       "father": "P005",
-      "mother": "P006",
-      "spouses": [
-        "P003"
-      ]
+      "mother": null,
+      "spouses": []
     },
     {
       "id": "P003",
-      "name": "李美麗",
-      "label": "母",
-      "spouses": [
-        "P002"
-      ]
+      "name": "王小明",
+      "label": "申請人",
+      "father": null,
+      "mother": "P002",
+      "spouses": []
     },
     {
       "id": "P004",
-      "name": "秦氏",
-      "label": "配偶",
-      "spouses": [
-        "P001"
-      ]
+      "name": "王老明",
+      "label": "",
+      "father": null,
+      "mother": null,
+      "spouses": []
     },
     {
       "id": "P005",
-      "name": "王巨明",
-      "label": "祖父",
-      "spouses": [
-        "P006"
-      ]
-    },
-    {
-      "id": "P006",
-      "name": "陳妻子",
-      "label": "祖母",
-      "spouses": [
-        "P005"
-      ]
+      "name": "王大明",
+      "label": "",
+      "father": "P004",
+      "mother": null,
+      "spouses": []
     }
   ]
 }

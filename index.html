@@ -269,35 +269,6 @@
                     <form method="post" action="/generate" style="display:inline;">
                         <button class="btn btn-secondary" type="submit">產生親屬關係表</button>
                     </form>
-                    <form method="post" action="/clear-people" style="display:inline;">
-                        <button class="btn btn-danger" type="submit">清除目前人物</button>
-                    </form>
-                </div>
-
-                <div class="person-list">
-                    <div class="section-title">儲存的親屬關係表</div>
-                    <form method="post" action="/save-as" class="row-actions" style="margin-top: 0;">
-                        <input type="text" name="save_name" placeholder="輸入儲存名稱" required>
-                        <button class="btn btn-secondary" type="submit">儲存</button>
-                    </form>
-                    {% for saved in saved_families %}
-                    <div class="person-item">
-                        <div class="person-meta">
-                            <div class="person-name">{{ saved.name }}</div>
-                            <div class="person-detail">{{ saved.saved_at }}</div>
-                        </div>
-                        <div class="person-actions">
-                            <form method="post" action="/load-save/{{ saved.id }}">
-                                <button class="btn btn-primary" type="submit">開啟</button>
-                            </form>
-                            <form method="post" action="/delete-save/{{ saved.id }}">
-                                <button class="btn btn-danger" type="submit">刪除</button>
-                            </form>
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="hint">尚未儲存任何親屬關係表。</div>
-                    {% endfor %}
                 </div>
 
                 <div class="person-list">

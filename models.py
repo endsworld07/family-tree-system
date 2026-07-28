@@ -23,6 +23,9 @@ class Person:
 
     spouses: list[str] = field(default_factory=list)
 
+    # 是否列入本次起掘人數統計
+    is_exhumation: bool = False
+
 
 # ----------------------------------------
 # 排版位置

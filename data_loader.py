@@ -29,6 +29,7 @@ class DataLoader:
                 father=item.get("father"),
                 mother=item.get("mother"),
                 spouses=item.get("spouses", []),
+                is_exhumation=item.get("is_exhumation", False),
             )
 
             people[person.id] = person

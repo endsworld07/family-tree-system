@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Dict
+from uuid import uuid4
 
 from flask import Flask, redirect, render_template, request, url_for
 
@@ -16,6 +19,7 @@ from svg_renderer import SvgRenderer
 app = Flask(__name__)
 
 DATA_FILE = Path("family.json")
+SAVES_FILE = Path("saved_families.json")
 
 
 # ---------------------------------------------------------
@@ -36,10 +40,10 @@ def load_people() -> tuple[Dict[str, Person], str]:
 # 儲存資料
 # ---------------------------------------------------------
 
-def save_people(
+def people_payload(
     people: Dict[str, Person],
     applicant_id: str,
-) -> None:
+) -> dict:
 
     payload = {
         "applicant": applicant_id,
@@ -56,10 +60,15 @@ def save_people(
                 "father": person.father,
                 "mother": person.mother,
                 "spouses": list(person.spouses),
+                "is_exhumation": person.is_exhumation,
             }
         )
 
-    DATA_FILE.write_text(
+    return payload
+
+
+def write_payload(filename: Path, payload: dict) -> None:
+    filename.write_text(
         json.dumps(
             payload,
             ensure_ascii=False,
@@ -67,6 +76,41 @@ def save_people(
         ),
         encoding="utf-8",
     )
+
+
+def save_people(
+    people: Dict[str, Person],
+    applicant_id: str,
+) -> None:
+    write_payload(DATA_FILE, people_payload(people, applicant_id))
+
+
+def load_saved_families() -> list[dict]:
+    if not SAVES_FILE.exists():
+        return []
+    try:
+        data = json.loads(SAVES_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    return data.get("saves", [])
+
+
+def save_named_family(name: str, people: Dict[str, Person], applicant_id: str) -> None:
+    saves = load_saved_families()
+    record = {
+        "id": uuid4().hex,
+        "name": name,
+        "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "payload": people_payload(people, applicant_id),
+    }
+    for index, saved in enumerate(saves):
+        if saved.get("name") == name:
+            record["id"] = saved.get("id", record["id"])
+            saves[index] = record
+            break
+    else:
+        saves.append(record)
+    write_payload(SAVES_FILE, {"saves": saves})
 
 
 # ---------------------------------------------------------
@@ -168,9 +212,42 @@ def get_or_create_person(
         father=None,
         mother=None,
         spouses=[],
+        is_exhumation=False,
     )
 
     return new_id
+
+
+def spouse_names_from_form() -> list[str]:
+    """Read one or more spouse names from the form, preserving entry order."""
+    raw = request.form.get("spouses", request.form.get("spouse", ""))
+    names: list[str] = []
+    for name in re.split(r"[,，、\n]", raw):
+        name = name.strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def update_spouses(people: Dict[str, Person], person_id: str, spouse_ids: list[str]) -> None:
+    """Replace a person's spouse list and keep every relationship reciprocal."""
+    for other in people.values():
+        if person_id in other.spouses:
+            other.spouses.remove(person_id)
+
+    person = people[person_id]
+    person.spouses = []
+    for spouse_id in spouse_ids:
+        if spouse_id == person_id or spouse_id not in people:
+            continue
+        if spouse_id not in person.spouses:
+            person.spouses.append(spouse_id)
+        if person_id not in people[spouse_id].spouses:
+            people[spouse_id].spouses.append(person_id)
+
+
+def exhumation_count(people: Dict[str, Person]) -> int:
+    return sum(person.is_exhumation for person in people.values())
 
 
 # ---------------------------------------------------------
@@ -195,6 +272,8 @@ def index():
         people=people,
         applicant_id=applicant_id,
         svg=svg,
+        exhumation_count=exhumation_count(people),
+        saved_families=load_saved_families(),
     )
 
 
@@ -209,7 +288,8 @@ def person_add():
 
     father_name = request.form.get("father", "").strip()
     mother_name = request.form.get("mother", "").strip()
-    spouse_name = request.form.get("spouse", "").strip()
+    spouse_names = spouse_names_from_form()
+    is_exhumation = request.form.get("is_exhumation") == "on"
 
     if not name:
         return redirect(url_for("index"))
@@ -230,10 +310,11 @@ def person_add():
         mother_name,
     )
 
-    spouse_id = get_or_create_person(
-        people,
-        spouse_name,
-    )
+    spouse_ids = [
+        spouse_id
+        for spouse_id in (get_or_create_person(people, spouse_name) for spouse_name in spouse_names)
+        if spouse_id
+    ]
 
     person_id = next_person_id(people)
 
@@ -244,13 +325,10 @@ def person_add():
         father=father_id,
         mother=mother_id,
         spouses=[],
+        is_exhumation=is_exhumation,
     )
 
-    if spouse_id:
-        people[person_id].spouses.append(spouse_id)
-
-        if person_id not in people[spouse_id].spouses:
-            people[spouse_id].spouses.append(person_id)
+    update_spouses(people, person_id, spouse_ids)
 
     if not applicant_id:
         applicant_id = person_id
@@ -287,6 +365,13 @@ def person_edit(person_id: str):
         applicant_id=applicant_id,
         svg=svg,
         editing=people[person_id],
+        editing_spouse_names="、".join(
+            people[spouse_id].name
+            for spouse_id in people[person_id].spouses
+            if spouse_id in people
+        ),
+        exhumation_count=exhumation_count(people),
+        saved_families=load_saved_families(),
     )
 
 
@@ -309,7 +394,8 @@ def person_update(person_id: str):
 
     father_name = request.form.get("father", "").strip()
     mother_name = request.form.get("mother", "").strip()
-    spouse_name = request.form.get("spouse", "").strip()
+    spouse_names = spouse_names_from_form()
+    is_exhumation = request.form.get("is_exhumation") == "on"
 
     if name:
         person.name = name
@@ -326,10 +412,11 @@ def person_update(person_id: str):
         mother_name,
     )
 
-    spouse_id = get_or_create_person(
-        people,
-        spouse_name,
-    )
+    spouse_ids = [
+        spouse_id
+        for spouse_id in (get_or_create_person(people, spouse_name) for spouse_name in spouse_names)
+        if spouse_id
+    ]
 
     # 避免自己指向自己
     if father_id == person_id:
@@ -338,30 +425,10 @@ def person_update(person_id: str):
     if mother_id == person_id:
         mother_id = None
 
-    if spouse_id == person_id:
-        spouse_id = None
-
     person.father = father_id
     person.mother = mother_id
-
-    # 清除舊配偶的雙向關係
-    for other in people.values():
-        if person_id in other.spouses:
-            other.spouses.remove(person_id)
-
-    person.spouses = []
-
-    # 建立新的雙向配偶
-    if spouse_id:
-
-        person.spouses.append(
-            spouse_id
-        )
-
-        if person_id not in people[spouse_id].spouses:
-            people[spouse_id].spouses.append(
-                person_id
-            )
+    person.is_exhumation = is_exhumation
+    update_spouses(people, person_id, spouse_ids)
 
     save_people(
         people,
@@ -463,7 +530,45 @@ def generate():
         people=people,
         applicant_id=applicant_id,
         svg=svg,
+        exhumation_count=exhumation_count(people),
+        saved_families=load_saved_families(),
     )
+
+
+# ---------------------------------------------------------
+# 命名儲存與載入
+# ---------------------------------------------------------
+
+@app.post("/save-as")
+def save_as():
+    people, applicant_id = load_people()
+    name = request.form.get("save_name", "").strip()
+    if name:
+        save_named_family(name, people, applicant_id)
+    return redirect(url_for("index"))
+
+
+@app.post("/load-save/<save_id>")
+def load_save(save_id: str):
+    for saved in load_saved_families():
+        if saved.get("id") == save_id and isinstance(saved.get("payload"), dict):
+            write_payload(DATA_FILE, saved["payload"])
+            break
+    return redirect(url_for("index"))
+
+
+@app.post("/delete-save/<save_id>")
+def delete_save(save_id: str):
+    saves = [saved for saved in load_saved_families() if saved.get("id") != save_id]
+    write_payload(SAVES_FILE, {"saves": saves})
+    return redirect(url_for("index"))
+
+
+@app.post("/clear-people")
+def clear_people():
+    """Clear only the current working family; named saves remain available."""
+    save_people({}, "")
+    return redirect(url_for("index"))
 
 
 # ---------------------------------------------------------
