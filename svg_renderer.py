@@ -62,7 +62,7 @@ class SvgRenderer:
     def _begin_svg(self) -> None:
         self._elements.extend([
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{self.result.width}" height="{self.result.height}" viewBox="0 0 {self.result.width} {self.result.height}">',
-            '<style>text{font-family:"Microsoft JhengHei","PMingLiU",sans-serif;fill:#000}.person-box{fill:#fff;stroke:#000;stroke-width:1.5}.person-box.inactive{fill:#eeeeee;stroke:#999}.person-box.applicant{fill:#fff3a3;stroke:#c78300;stroke-width:2.5}.inactive-text{fill:#777}.connection-line,.connection-bar{stroke:#000;stroke-width:2;fill:none;stroke-linecap:square;stroke-linejoin:miter}.name-text{font-size:14px;text-anchor:middle;dominant-baseline:middle}.label-text{font-size:13px;text-anchor:middle;dominant-baseline:middle}</style>',
+            '<style>text{font-family:"Microsoft JhengHei","PMingLiU",sans-serif;fill:#000}.person-box{fill:#fff;stroke:#000;stroke-width:.6}.person-box.inactive{fill:#eeeeee;stroke:#999}.person-box.applicant{fill:#fff3a3;stroke:#c78300;stroke-width:.9}.inactive-text{fill:#777}.connection-line,.connection-bar{stroke:#000;stroke-width:2;fill:none;stroke-linecap:square;stroke-linejoin:miter}.name-text{font-size:14px;text-anchor:middle;dominant-baseline:middle}.label-text{font-size:13px;text-anchor:middle;dominant-baseline:middle}.note-text{font-size:9px;text-anchor:middle;dominant-baseline:middle}</style>',
         ])
 
     def _end_svg(self) -> None:
@@ -167,10 +167,14 @@ class SvgRenderer:
 
     def _draw_person_box(self, x: int, y: int, person: Person) -> str:
         name, label = self._escape(person.name), self._escape(person.label or '')
+        note = self._escape(person.non_exhumation_note.strip()) if not person.is_exhumation else ''
         is_applicant = person.label.strip() == "申請人"
         state_class = " applicant" if is_applicant else ("" if person.is_exhumation else " inactive")
         text_class = "" if is_applicant or person.is_exhumation else " inactive-text"
-        return f'<g><rect class="person-box{state_class}" x="{x}" y="{y}" width="{self.NODE_WIDTH}" height="{self.NODE_HEIGHT}" rx="0" ry="0" /><text class="name-text{text_class}" x="{x + self.NODE_WIDTH / 2}" y="{y + 24}">{name}</text><text class="label-text{text_class}" x="{x + self.NODE_WIDTH / 2}" y="{y + 42}">{label}</text></g>'
+        center_x = x + self.NODE_WIDTH / 2
+        if note:
+            return f'<g><rect class="person-box{state_class}" x="{x}" y="{y}" width="{self.NODE_WIDTH}" height="{self.NODE_HEIGHT}" rx="0" ry="0" /><text class="name-text{text_class}" x="{center_x}" y="{y + 18}">{name}</text><text class="label-text{text_class}" x="{center_x}" y="{y + 35}">{label}</text><text class="note-text{text_class}" x="{center_x}" y="{y + 51}">{note}</text></g>'
+        return f'<g><rect class="person-box{state_class}" x="{x}" y="{y}" width="{self.NODE_WIDTH}" height="{self.NODE_HEIGHT}" rx="0" ry="0" /><text class="name-text{text_class}" x="{center_x}" y="{y + 24}">{name}</text><text class="label-text{text_class}" x="{center_x}" y="{y + 42}">{label}</text></g>'
 
     @staticmethod
     def _escape(text: str) -> str:

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import re
+import textwrap
+from io import BytesIO
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
 from uuid import uuid4
 
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, send_file, url_for
 
 from connection_engine import ConnectionEngine
 from data_loader import DataLoader
@@ -61,6 +63,7 @@ def people_payload(
                 "mother": person.mother,
                 "spouses": list(person.spouses),
                 "is_exhumation": person.is_exhumation,
+                "non_exhumation_note": person.non_exhumation_note,
             }
         )
 
@@ -117,17 +120,17 @@ def save_named_family(name: str, people: Dict[str, Person], applicant_id: str) -
 # 產生 SVG
 # ---------------------------------------------------------
 
-def build_svg(
+def build_svg_with_layout(
     people: Dict[str, Person],
     applicant_id: str,
-) -> str:
+) -> tuple[str, object | None]:
 
     if (
         not people
         or not applicant_id
         or applicant_id not in people
     ):
-        return ""
+        return "", None
 
     relationship_engine = RelationshipEngine(people)
     relationships = relationship_engine.build()
@@ -156,7 +159,21 @@ def build_svg(
         connection_result,
     )
 
-    return svg_result.svg
+    return svg_result.svg, layout_result
+
+
+def build_svg(
+    people: Dict[str, Person],
+    applicant_id: str,
+) -> str:
+    return build_svg_with_layout(people, applicant_id)[0]
+
+
+def people_not_in_svg(people: Dict[str, Person], layout_result) -> set[str]:
+    """Return people that the current relationship layout cannot place on the graph."""
+    if layout_result is None:
+        return set(people)
+    return set(people) - set(layout_result.positions)
 
 
 # ---------------------------------------------------------
@@ -213,6 +230,7 @@ def get_or_create_person(
         mother=None,
         spouses=[],
         is_exhumation=False,
+        non_exhumation_note="",
     )
 
     return new_id
@@ -250,6 +268,210 @@ def exhumation_count(people: Dict[str, Person]) -> int:
     return sum(person.is_exhumation for person in people.values())
 
 
+def svg_png(svg: str, people: Dict[str, Person], layout_result) -> BytesIO:
+    """Convert the graph to PNG and paint Chinese labels with the bundled font."""
+    import cairosvg
+    from PIL import Image, ImageChops, ImageDraw, ImageFont
+
+    raw_image = BytesIO()
+    scale = 2
+    cairosvg.svg2png(bytestring=svg.encode("utf-8"), write_to=raw_image, scale=scale)
+    raw_image.seek(0)
+    rendered = Image.open(raw_image).convert("RGBA")
+    image = Image.new("RGBA", rendered.size, "white")
+    image.alpha_composite(rendered)
+
+    font_path = Path(__file__).with_name("fonts") / "NotoSansCJKtc-Regular.otf"
+    if not font_path.exists():
+        raise RuntimeError("找不到繁中字型檔 fonts/NotoSansCJKtc-Regular.otf")
+    name_font = ImageFont.truetype(str(font_path), 14 * scale)
+    label_font = ImageFont.truetype(str(font_path), 13 * scale)
+    note_font = ImageFont.truetype(str(font_path), 9 * scale)
+    draw = ImageDraw.Draw(image)
+
+    positions = layout_result.positions
+    min_column = min(position.column for position in positions.values())
+    min_row = min(position.row for position in positions.values())
+    origin_x = 60 - min_column * 180
+    origin_y = 60 - min_row * 75
+    for person_id, position in positions.items():
+        person = people.get(person_id)
+        if person is None:
+            continue
+        x = int((origin_x + position.column * 180 - 60) * scale)
+        y = int((origin_y + position.row * 75 - 30) * scale)
+        width, height = 120 * scale, 60 * scale
+        is_applicant = person.label.strip() == "申請人"
+        fill = "#fff3a3" if is_applicant else ("#ffffff" if person.is_exhumation else "#eeeeee")
+        outline = "#c78300" if is_applicant else ("#000000" if person.is_exhumation else "#999999")
+        text_color = "#000000" if is_applicant or person.is_exhumation else "#777777"
+        draw.rectangle((x, y, x + width, y + height), fill=fill, outline=outline, width=scale)
+        center_x = x + width // 2
+        note = person.non_exhumation_note.strip() if not person.is_exhumation else ""
+        if note:
+            draw.text((center_x, y + 18 * scale), person.name, font=name_font, fill=text_color, anchor="mm")
+            draw.text((center_x, y + 35 * scale), person.label or "", font=label_font, fill=text_color, anchor="mm")
+            draw.text((center_x, y + 51 * scale), note, font=note_font, fill=text_color, anchor="mm")
+        else:
+            draw.text((center_x, y + 24 * scale), person.name, font=name_font, fill=text_color, anchor="mm")
+            draw.text((center_x, y + 42 * scale), person.label or "", font=label_font, fill=text_color, anchor="mm")
+
+    # Remove renderer padding so the relationship graph itself can fill the A4 graph area.
+    rgb_image = image.convert("RGB")
+    white_background = Image.new("RGB", rgb_image.size, "white")
+    content_box = ImageChops.difference(rgb_image, white_background).getbbox()
+    if content_box:
+        padding = 12 * scale
+        left, top, right, bottom = content_box
+        image = image.crop((
+            max(0, left - padding),
+            max(0, top - padding),
+            min(image.width, right + padding),
+            min(image.height, bottom + padding),
+        ))
+
+    output = BytesIO()
+    image.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+
+def export_pdf(graph_png: BytesIO | None, count: int, recipient: str) -> BytesIO:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfgen import canvas
+
+    font_path = Path(__file__).with_name("fonts") / "NotoSansTC-Variable.ttf"
+    if not font_path.exists():
+        raise RuntimeError("找不到繁中字型檔 fonts/NotoSansTC-Variable.ttf")
+    font = "NotoSansTC"
+    pdfmetrics.registerFont(TTFont(font, str(font_path)))
+    page_width, page_height = A4
+    margin = 28.35  # 1 cm
+    output = BytesIO()
+    document = canvas.Canvas(output, pagesize=A4)
+
+    document.setFont(font, 18)
+    title = "親屬關係表"
+    title_gap = 28.35  # 1 cm between each character
+    title_width = sum(pdfmetrics.stringWidth(character, font, 18) for character in title)
+    title_width += title_gap * (len(title) - 1)
+    title_x = (page_width - title_width) / 2
+    for character in title:
+        document.drawString(title_x, page_height - margin - 18, character)
+        title_x += pdfmetrics.stringWidth(character, font, 18) + title_gap
+    if graph_png:
+        image = ImageReader(graph_png)
+        graph_bottom = 215
+        graph_top = page_height - margin - 42
+        document.drawImage(
+            image,
+            margin,
+            graph_bottom,
+            width=page_width - margin * 2,
+            height=graph_top - graph_bottom,
+            preserveAspectRatio=True,
+            anchor="c",
+        )
+    statement_lines = [
+        f"以上共{count}位被申請起掘，其確係本人祖先（關係或稱謂如上表）無訛，且均由本人祭拜，",
+        "故由本人申請辦理遷葬事宜，特立切結，如有虛偽造假及相關法律糾紛，概由本人負責，與貴所無涉。",
+    ]
+
+    def draw_justified_line(line: str, baseline_y: float, underline_count: bool = False) -> None:
+        """Draw a line whose first and last characters align to the 1 cm page margins."""
+        character_widths = [pdfmetrics.stringWidth(character, font, 10) for character in line]
+        available_width = page_width - margin * 2
+        spacing = (available_width - sum(character_widths)) / max(1, len(line) - 1)
+        count_start = line.find(str(count)) if underline_count else -1
+        count_indexes = set(range(count_start, count_start + len(str(count))))
+        x = margin
+        for index, (character, character_width) in enumerate(zip(line, character_widths)):
+            document.drawString(x, baseline_y, character)
+            if index in count_indexes:
+                document.line(x, baseline_y - 1.5, x + character_width, baseline_y - 1.5)
+            x += character_width + spacing
+
+    y = 192
+    document.setFont(font, 10)
+    for index, line in enumerate(statement_lines):
+        draw_justified_line(line, y, underline_count=index == 0)
+        y -= 15
+    y -= 4
+    document.drawString(margin, y, "此致")
+    y -= 18
+    document.drawString(margin, y, recipient or "____________________________")
+    y -= 31
+    document.drawCentredString(page_width / 2, y, "具結人：___________________（簽章）")
+    y -= 25
+    document.drawCentredString(page_width / 2, y, "中華民國 ____ 年 ____ 月 ____ 日")
+    document.save()
+    output.seek(0)
+    return output
+
+
+def export_xlsx(graph_png: BytesIO | None, count: int, recipient: str) -> BytesIO:
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.worksheet.page import PageMargins
+
+    workbook = Workbook()
+    chart_sheet = workbook.active
+    chart_sheet.title = "親屬關係表"
+    chart_sheet.page_setup.paperSize = chart_sheet.PAPERSIZE_A4
+    chart_sheet.page_setup.orientation = "landscape"
+    chart_sheet.page_setup.fitToWidth = 1
+    chart_sheet.page_setup.fitToHeight = 1
+    chart_sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    chart_sheet.page_margins = PageMargins(left=0.3937, right=0.3937, top=0.3937, bottom=0.3937, header=0, footer=0)
+    chart_sheet.print_options.horizontalCentered = True
+    chart_sheet.print_options.verticalCentered = True
+    chart_sheet.sheet_view.showGridLines = False
+    chart_sheet.merge_cells("A1:H2")
+    title = chart_sheet["A1"]
+    title.value = "親屬關係表"
+    title.font = Font(name="Microsoft JhengHei", size=20, bold=True)
+    title.alignment = Alignment(horizontal="center", vertical="center")
+    if graph_png:
+        image = Image(graph_png)
+        original_width, original_height = image.width, image.height
+        scale = min(820 / original_width, 330 / original_height)
+        image.width = original_width * scale
+        image.height = original_height * scale
+        chart_sheet.add_image(image, "A3")
+    for column in "ABCDEFGH":
+        chart_sheet.column_dimensions[column].width = 16
+    for row in range(1, 39):
+        chart_sheet.row_dimensions[row].height = 18
+    chart_sheet.row_dimensions[1].height = 28
+    chart_sheet.row_dimensions[2].height = 20
+    chart_sheet.merge_cells("A23:H27")
+    chart_sheet["A23"] = (
+        f"以上共 {count} 位被申請起掘，其確係本人祖先（關係或稱謂如上表）無訛，"
+        "且均由本人祭拜，故由本人申請辦理遷葬事宜，特立切結，如有虛偽造假及相關法律糾紛，"
+        "概由本人負責，與貴所無涉。"
+    )
+    chart_sheet["A23"].alignment = Alignment(wrap_text=True, vertical="top")
+    chart_sheet["A23"].font = Font(name="Microsoft JhengHei", size=10)
+    chart_sheet.merge_cells("A29:H29")
+    chart_sheet["A29"] = "此致"
+    chart_sheet.merge_cells("A30:H30")
+    chart_sheet["A30"] = recipient or "____________________________"
+    chart_sheet.merge_cells("A33:H33")
+    chart_sheet["A33"] = "具結人：___________________（簽章）"
+    chart_sheet.merge_cells("A36:H36")
+    chart_sheet["A36"] = "中華民國 ____ 年 ____ 月 ____ 日"
+    chart_sheet.print_area = "A1:H38"
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
 # ---------------------------------------------------------
 # 首頁
 # ---------------------------------------------------------
@@ -259,19 +481,14 @@ def index():
 
     people, applicant_id = load_people()
 
-    svg = ""
-
-    if applicant_id:
-        svg = build_svg(
-            people,
-            applicant_id,
-        )
+    svg, layout_result = build_svg_with_layout(people, applicant_id)
 
     return render_template(
         "index.html",
         people=people,
         applicant_id=applicant_id,
         svg=svg,
+        hidden_person_ids=people_not_in_svg(people, layout_result),
         exhumation_count=exhumation_count(people),
         saved_families=load_saved_families(),
     )
@@ -290,6 +507,7 @@ def person_add():
     mother_name = request.form.get("mother", "").strip()
     spouse_names = spouse_names_from_form()
     is_exhumation = request.form.get("is_exhumation") == "on"
+    non_exhumation_note = request.form.get("non_exhumation_note", "").strip()
 
     if not name:
         return redirect(url_for("index"))
@@ -326,6 +544,7 @@ def person_add():
         mother=mother_id,
         spouses=[],
         is_exhumation=is_exhumation,
+        non_exhumation_note="" if is_exhumation else non_exhumation_note,
     )
 
     update_spouses(people, person_id, spouse_ids)
@@ -351,19 +570,14 @@ def person_edit(person_id: str):
     if person_id not in people:
         return redirect(url_for("index"))
 
-    svg = ""
-
-    if applicant_id:
-        svg = build_svg(
-            people,
-            applicant_id,
-        )
+    svg, layout_result = build_svg_with_layout(people, applicant_id)
     print(">>> person_edit()")
     return render_template(
         "index.html",
         people=people,
         applicant_id=applicant_id,
         svg=svg,
+        hidden_person_ids=people_not_in_svg(people, layout_result),
         editing=people[person_id],
         editing_spouse_names="、".join(
             people[spouse_id].name
@@ -396,6 +610,7 @@ def person_update(person_id: str):
     mother_name = request.form.get("mother", "").strip()
     spouse_names = spouse_names_from_form()
     is_exhumation = request.form.get("is_exhumation") == "on"
+    non_exhumation_note = request.form.get("non_exhumation_note", "").strip()
 
     if name:
         person.name = name
@@ -428,6 +643,7 @@ def person_update(person_id: str):
     person.father = father_id
     person.mother = mother_id
     person.is_exhumation = is_exhumation
+    person.non_exhumation_note = "" if is_exhumation else non_exhumation_note
     update_spouses(people, person_id, spouse_ids)
 
     save_people(
@@ -517,19 +733,14 @@ def generate():
 
     people, applicant_id = load_people()
 
-    svg = ""
-
-    if applicant_id:
-        svg = build_svg(
-            people,
-            applicant_id,
-        )
+    svg, layout_result = build_svg_with_layout(people, applicant_id)
 
     return render_template(
         "index.html",
         people=people,
         applicant_id=applicant_id,
         svg=svg,
+        hidden_person_ids=people_not_in_svg(people, layout_result),
         exhumation_count=exhumation_count(people),
         saved_families=load_saved_families(),
     )
@@ -569,6 +780,30 @@ def clear_people():
     """Clear only the current working family; named saves remain available."""
     save_people({}, "")
     return redirect(url_for("index"))
+
+
+@app.post("/export")
+def export_document():
+    people, applicant_id = load_people()
+    recipient = request.form.get("recipient", "").strip()
+    export_format = request.form.get("export_format", "pdf")
+    svg, layout_result = build_svg_with_layout(people, applicant_id)
+    graph_png = svg_png(svg, people, layout_result) if svg and layout_result else None
+    count = exhumation_count(people)
+
+    if export_format == "xlsx":
+        return send_file(
+            export_xlsx(graph_png, count, recipient),
+            as_attachment=True,
+            download_name="親屬關係表.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    return send_file(
+        export_pdf(graph_png, count, recipient),
+        as_attachment=True,
+        download_name="親屬關係表.pdf",
+        mimetype="application/pdf",
+    )
 
 
 # ---------------------------------------------------------

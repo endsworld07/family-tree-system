@@ -154,6 +154,14 @@
             word-break: break-all;
         }
 
+        .person-warning {
+            color: #dc2626;
+            font-size: 12px;
+            font-weight: 700;
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
         .person-actions {
             display: flex;
             gap: 6px;
@@ -246,10 +254,20 @@
                         <label>
                             <input
                                 type="checkbox"
+                                id="is-exhumation"
                                 name="is_exhumation"
                                 {% if editing and editing.is_exhumation %}checked{% endif %}>
                             是否為本次起掘人數
                         </label>
+                    </div>
+
+                    <div class="form-group" id="non-exhumation-note-group">
+                        <label>未列入起掘人數說明</label>
+                        <input
+                            type="text"
+                            name="non_exhumation_note"
+                            value="{{ editing.non_exhumation_note if editing else '' }}"
+                            placeholder="例如：已移置他處">
                     </div>
                     
                     <div class="row-actions">
@@ -271,6 +289,24 @@
                     </form>
                     <form method="post" action="/clear-people" style="display:inline;">
                         <button class="btn btn-danger" type="submit">清除目前人物</button>
+                    </form>
+                </div>
+
+                <div class="person-list">
+                    <div class="section-title">A4 匯出</div>
+                    <form method="post" action="/export">
+                        <div class="form-group">
+                            <label>輸出格式</label>
+                            <select name="export_format">
+                                <option value="pdf">PDF</option>
+                                <option value="xlsx">Excel</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>此致（受文單位）</label>
+                            <input type="text" name="recipient" placeholder="例如：觀音區公所">
+                        </div>
+                        <button class="btn btn-primary" type="submit">匯出 A4 文件</button>
                     </form>
                 </div>
 
@@ -340,6 +376,10 @@
                             <div class="person-detail">列入本次起掘人數</div>
                             {% endif %}
 
+                            {% if person_id in hidden_person_ids %}
+                            <div class="person-warning">尚未顯示於關係圖，請補填可連結的父母或配偶關係。</div>
+                            {% endif %}
+
                         </div>
                     <div class="person-actions">
 
@@ -381,5 +421,21 @@
             </div>
         </div>
     </div>
+
+    <script>
+        const exhumationCheckbox = document.getElementById("is-exhumation");
+        const noteGroup = document.getElementById("non-exhumation-note-group");
+
+        function toggleNonExhumationNote() {
+            if (exhumationCheckbox && noteGroup) {
+                noteGroup.style.display = exhumationCheckbox.checked ? "none" : "block";
+            }
+        }
+
+        if (exhumationCheckbox) {
+            exhumationCheckbox.addEventListener("change", toggleNonExhumationNote);
+            toggleNonExhumationNote();
+        }
+    </script>
 </body>
 </html>
