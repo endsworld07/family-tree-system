@@ -303,9 +303,10 @@ def submit_person(name: str, label: str, father_name: str, mother_name: str, spo
 
 def init_state() -> None:
     if "people" not in st.session_state:
-        people, applicant_id = people_from_payload(initial_payload())
-        st.session_state.people = people
-        st.session_state.applicant_id = applicant_id
+        # A deployed app always starts with a clean, empty relationship chart.
+        # Saved example data is not loaded automatically.
+        st.session_state.people = {}
+        st.session_state.applicant_id = ""
         st.session_state.saves = []
         st.session_state.editing_id = ""
 
