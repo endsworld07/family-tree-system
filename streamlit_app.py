@@ -401,9 +401,6 @@ def main() -> None:
             if st.session_state.applicant_id == person_id:
                 st.session_state.applicant_id = next(iter(people), "")
             st.rerun()
-        if person_id != applicant_id and st.button(f"設為申請人：{person.name}", key=f"applicant_{person_id}"):
-            st.session_state.applicant_id = person_id
-            st.rerun()
 
 
 if __name__ == "__main__":
