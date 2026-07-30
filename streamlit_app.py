@@ -24,6 +24,17 @@ DATA_FILE = BASE_DIR / "family.json"
 SAVES_FILE = BASE_DIR / "saved_families.json"
 
 
+def export_font_path() -> Path:
+    """Prefer the bundled 標楷體 font, with the existing Noto font as fallback."""
+    for candidate in (
+        BASE_DIR / "fonts" / "標楷體.ttf",
+        BASE_DIR / "標楷體.ttf",
+    ):
+        if candidate.exists():
+            return candidate
+    return BASE_DIR / "fonts" / "NotoSansTC-Variable.ttf"
+
+
 def person_payload(people: Dict[str, Person], applicant_id: str) -> dict:
     return {
         "applicant": applicant_id,
@@ -215,7 +226,7 @@ def svg_png(svg: str, people: Dict[str, Person], layout) -> BytesIO:
     image = Image.new("RGBA", rendered.size, "white")
     image.alpha_composite(rendered)
 
-    font_path = BASE_DIR / "fonts" / "NotoSansCJKtc-Regular.otf"
+    font_path = export_font_path()
     name_font = ImageFont.truetype(str(font_path), 14 * scale)
     label_font = ImageFont.truetype(str(font_path), 13 * scale)
     note_font = ImageFont.truetype(str(font_path), 9 * scale)
@@ -263,8 +274,8 @@ def export_pdf(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfgen import canvas
 
-    font = "NotoSansTC"
-    pdfmetrics.registerFont(TTFont(font, str(BASE_DIR / "fonts" / "NotoSansTC-Variable.ttf")))
+    font = "KaiTi" if export_font_path().name == "標楷體.ttf" else "NotoSansTC"
+    pdfmetrics.registerFont(TTFont(font, str(export_font_path())))
     page_width, page_height = A4
     margin = 28.35
     output = BytesIO()
@@ -329,8 +340,8 @@ def export_docx(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
     from PIL import Image
 
     def set_font(run, size: float, *, bold: bool = False) -> None:
-        run.font.name = "Taipei Sans TC Beta"
-        run._element.rPr.rFonts.set(qn("w:eastAsia"), "Taipei Sans TC Beta")
+        run.font.name = "DFKai-SB"
+        run._element.rPr.rFonts.set(qn("w:eastAsia"), "DFKai-SB")
         run.font.size = Pt(size)
         run.bold = bold
 
@@ -342,8 +353,8 @@ def export_docx(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
     section.header_distance = section.footer_distance = Cm(0.5)
 
     normal = document.styles["Normal"]
-    normal.font.name = "Taipei Sans TC Beta"
-    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Taipei Sans TC Beta")
+    normal.font.name = "DFKai-SB"
+    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "DFKai-SB")
     normal.font.size = Pt(10)
     normal.paragraph_format.space_after = Pt(0)
 
