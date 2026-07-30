@@ -11,7 +11,6 @@ from typing import Dict
 from uuid import uuid4
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from connection_engine import ConnectionEngine
 from layout_engine import LayoutEngine
@@ -23,10 +22,6 @@ from svg_renderer import SvgRenderer
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "family.json"
 SAVES_FILE = BASE_DIR / "saved_families.json"
-INTERACTIVE_CHART = components.declare_component(
-    "interactive_family_chart",
-    path=str(BASE_DIR / "interactive_chart"),
-)
 
 
 def export_font_path() -> Path:
@@ -539,19 +534,7 @@ def main() -> None:
             st.rerun()
 
     if svg:
-        click_event = INTERACTIVE_CHART(svg=svg, key="family_chart", default={})
-        if isinstance(click_event, dict):
-            clicked_id = click_event.get("person_id")
-            event_id = click_event.get("event_id")
-            if (
-                clicked_id in people
-                and event_id
-                and event_id != st.session_state.get("last_chart_event_id")
-            ):
-                st.session_state.last_chart_event_id = event_id
-                st.session_state.editing_id = clicked_id
-                st.session_state.form_revision += 1
-                st.rerun()
+        st.markdown(svg, unsafe_allow_html=True)
     else:
         st.info("請新增人物，並設定申請人。")
 
