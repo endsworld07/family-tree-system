@@ -31,7 +31,7 @@ class LayoutEngine:
     NODE_WIDTH = 120
     NODE_HEIGHT = 60
     COLUMN_GAP = 180
-    ROW_GAP = 75
+    ROW_GAP = 60
     NODE_MARGIN = 15
 
     def __init__(self, people: Dict[str, Person], relationships: dict, applicant_id: str):

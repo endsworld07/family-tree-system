@@ -19,7 +19,7 @@ class SvgRenderer:
     NODE_WIDTH = 120
     NODE_HEIGHT = 60
     COLUMN_GAP = 180
-    ROW_GAP = 75
+    ROW_GAP = 60
     PADDING_X = 60
     PADDING_Y = 60
     ELBOW_MARGIN = 24
@@ -123,7 +123,12 @@ class SvgRenderer:
         ax, ay = self._line_start_after_spouse(anchor_id, children[0], anchor)
         junction_y = min(target[1] for target in targets) - self.ELBOW_MARGIN
         if junction_y <= ay:
-            return ''
+            # A compact layout can leave less than one elbow margin between a
+            # parent and child.  Keep the connection instead of dropping it.
+            # The midpoint still produces a clean vertical / right-angle path.
+            junction_y = (ay + min(target[1] for target in targets)) / 2
+            if junction_y <= ay:
+                return ''
         left_x = min(target[0] for target in targets)
         right_x = max(target[0] for target in targets)
         parts = [f'<path class="connection-bar" d="M {ax} {ay} L {ax} {junction_y}" />']

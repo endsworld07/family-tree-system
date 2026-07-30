@@ -21,6 +21,7 @@ from svg_renderer import SvgRenderer
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "family.json"
+SAVES_FILE = BASE_DIR / "saved_families.json"
 
 
 def person_payload(people: Dict[str, Person], applicant_id: str) -> dict:
@@ -66,6 +67,25 @@ def initial_payload() -> dict:
         except (OSError, json.JSONDecodeError):
             pass
     return {"applicant": "", "people": []}
+
+
+def load_saved_families() -> list[dict]:
+    """Load named charts from the deployment's writable data file."""
+    if not SAVES_FILE.exists():
+        return []
+    try:
+        data = json.loads(SAVES_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    saves = data.get("saves", [])
+    return saves if isinstance(saves, list) else []
+
+
+def write_saved_families(saves: list[dict]) -> None:
+    SAVES_FILE.write_text(
+        json.dumps({"saves": saves}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def next_person_id(people: Dict[str, Person]) -> str:
@@ -144,12 +164,12 @@ def svg_png(svg: str, people: Dict[str, Person], layout) -> BytesIO:
     positions = layout.positions
     min_column = min(position.column for position in positions.values())
     min_row = min(position.row for position in positions.values())
-    origin_x, origin_y = 60 - min_column * 180, 60 - min_row * 75
+    origin_x, origin_y = 60 - min_column * 180, 60 - min_row * 60
 
     for person_id, position in positions.items():
         person = people[person_id]
         x = int((origin_x + position.column * 180 - 60) * scale)
-        y = int((origin_y + position.row * 75 - 30) * scale)
+        y = int((origin_y + position.row * 60 - 30) * scale)
         width, height = 120 * scale, 60 * scale
         applicant = person.label.strip() == "申請人"
         fill = "#fff3a3" if applicant else ("#ffffff" if person.is_exhumation else "#eeeeee")
@@ -298,6 +318,7 @@ def submit_person(name: str, label: str, father_name: str, mother_name: str, spo
     spouse_ids = [find_or_create_person(people, spouse_name) for spouse_name in spouse_names(spouses_text)]
     update_spouses(people, editing_id, [spouse_id for spouse_id in spouse_ids if spouse_id])
     st.session_state.editing_id = ""
+    st.session_state.form_revision += 1
     st.rerun()
 
 
@@ -307,8 +328,12 @@ def init_state() -> None:
         # Saved example data is not loaded automatically.
         st.session_state.people = {}
         st.session_state.applicant_id = ""
-        st.session_state.saves = []
+    if "saves" not in st.session_state:
+        st.session_state.saves = load_saved_families()
+    if "editing_id" not in st.session_state:
         st.session_state.editing_id = ""
+    if "form_revision" not in st.session_state:
+        st.session_state.form_revision = 0
 
 
 def main() -> None:
@@ -323,19 +348,21 @@ def main() -> None:
     with st.sidebar:
         st.header("新增／編輯人物")
         editing = people.get(st.session_state.editing_id)
-        with st.form("person_form", clear_on_submit=not bool(editing)):
-            name = st.text_input("姓名", value=editing.name if editing else "")
-            label = st.text_input("稱謂", value=editing.label if editing else "")
-            father = st.text_input("父親（姓名）", value=people[editing.father].name if editing and editing.father in people else "")
-            mother = st.text_input("母親（姓名）", value=people[editing.mother].name if editing and editing.mother in people else "")
-            spouse_text = st.text_input("配偶（可用逗號或頓號分隔）", value="、".join(people[spouse_id].name for spouse_id in editing.spouses if spouse_id in people) if editing else "")
-            marked = st.checkbox("是否為本次起掘人數", value=editing.is_exhumation if editing else False)
-            note = st.text_input("未列入起掘人數說明", value=editing.non_exhumation_note if editing else "", placeholder="例如：已移置他處")
+        form_id = f"{editing.id if editing else 'new'}_{st.session_state.form_revision}"
+        with st.form(f"person_form_{form_id}", clear_on_submit=False):
+            name = st.text_input("姓名", value=editing.name if editing else "", key=f"name_{form_id}")
+            label = st.text_input("稱謂", value=editing.label if editing else "", key=f"label_{form_id}")
+            father = st.text_input("父親（姓名）", value=people[editing.father].name if editing and editing.father in people else "", key=f"father_{form_id}")
+            mother = st.text_input("母親（姓名）", value=people[editing.mother].name if editing and editing.mother in people else "", key=f"mother_{form_id}")
+            spouse_text = st.text_input("配偶（可用逗號或頓號分隔）", value="、".join(people[spouse_id].name for spouse_id in editing.spouses if spouse_id in people) if editing else "", key=f"spouses_{form_id}")
+            marked = st.checkbox("是否為本次起掘人數", value=editing.is_exhumation if editing else False, key=f"exhumation_{form_id}")
+            note = st.text_input("未列入起掘人數說明", value=editing.non_exhumation_note if editing else "", placeholder="例如：已移置他處", key=f"note_{form_id}")
             submitted = st.form_submit_button("更新人物" if editing else "新增人物", use_container_width=True)
         if submitted:
             submit_person(name, label, father, mother, spouse_text, marked, note)
         if editing and st.button("取消編輯", use_container_width=True):
             st.session_state.editing_id = ""
+            st.session_state.form_revision += 1
             st.rerun()
 
         st.divider()
@@ -349,8 +376,10 @@ def main() -> None:
         st.divider()
         save_name = st.text_input("儲存名稱")
         if st.button("儲存目前關係表", use_container_width=True) and save_name.strip():
-            st.session_state.saves = [saved for saved in st.session_state.saves if saved["name"] != save_name.strip()]
-            st.session_state.saves.append({"id": uuid4().hex, "name": save_name.strip(), "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "payload": person_payload(people, applicant_id)})
+            saves = [saved for saved in st.session_state.saves if saved["name"] != save_name.strip()]
+            saves.append({"id": uuid4().hex, "name": save_name.strip(), "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "payload": person_payload(people, applicant_id)})
+            write_saved_families(saves)
+            st.session_state.saves = saves
             st.rerun()
         for saved in st.session_state.saves:
             with st.expander(f"{saved['name']}（{saved['saved_at']}）"):
@@ -359,7 +388,9 @@ def main() -> None:
                     st.session_state.editing_id = ""
                     st.rerun()
                 if st.button("刪除此儲存", key=f"delete_save_{saved['id']}"):
-                    st.session_state.saves = [item for item in st.session_state.saves if item["id"] != saved["id"]]
+                    saves = [item for item in st.session_state.saves if item["id"] != saved["id"]]
+                    write_saved_families(saves)
+                    st.session_state.saves = saves
                     st.rerun()
         if st.button("清除目前人物", type="secondary", use_container_width=True):
             st.session_state.people, st.session_state.applicant_id, st.session_state.editing_id = {}, "", ""
@@ -389,6 +420,7 @@ def main() -> None:
             left.error("尚未顯示於關係圖，請補填可連結的父母或配偶關係。")
         if middle.button("編輯", key=f"edit_{person_id}"):
             st.session_state.editing_id = person_id
+            st.session_state.form_revision += 1
             st.rerun()
         if right.button("刪除", key=f"delete_{person_id}"):
             for other in people.values():
