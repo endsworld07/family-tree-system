@@ -82,15 +82,23 @@ class LayoutEngine:
         return self.result
 
     def _build_main_chain(self) -> None:
-        """Place the paternal chain on a compact, single vertical axis."""
+        """Place the lineage selected by the father's 招贅 status on one axis."""
         chain: List[str] = []
         current = self.applicant_id
         visited = set()
         while current and current not in visited:
             visited.add(current)
             chain.append(current)
-            father, _ = self._parents.get(current, (None, None))
-            current = father
+            father, mother = self._parents.get(current, (None, None))
+            father_is_uxorilocal = bool(
+                father and father in self.people and self.people[father].is_matrilineal_main_line
+            )
+            # When the current person's father is 招贅, this generation
+            # belongs to the mother's family.  Otherwise it follows the
+            # normal paternal route.  At the next generation the same rule
+            # is evaluated again, so only marked branches become maternal.
+            preferred_parent = mother if father_is_uxorilocal else father
+            current = preferred_parent or (father if father_is_uxorilocal else mother)
         chain.reverse()
         self._main_line = chain
         for index, person_id in enumerate(chain):

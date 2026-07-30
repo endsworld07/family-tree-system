@@ -35,6 +35,7 @@ def person_payload(people: Dict[str, Person], applicant_id: str) -> dict:
                 "father": person.father,
                 "mother": person.mother,
                 "spouses": list(person.spouses),
+                "is_matrilineal_main_line": person.is_matrilineal_main_line,
                 "is_exhumation": person.is_exhumation,
                 "non_exhumation_note": person.non_exhumation_note,
             }
@@ -53,6 +54,7 @@ def people_from_payload(payload: dict) -> tuple[Dict[str, Person], str]:
             father=item.get("father"),
             mother=item.get("mother"),
             spouses=item.get("spouses", []),
+            is_matrilineal_main_line=item.get("is_matrilineal_main_line", False),
             is_exhumation=item.get("is_exhumation", False),
             non_exhumation_note=item.get("non_exhumation_note", ""),
         )
@@ -361,7 +363,7 @@ def export_xlsx(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
     return output.getvalue()
 
 
-def submit_person(name: str, label: str, father_name: str, mother_name: str, spouses_text: str, is_exhumation: bool, note: str) -> None:
+def submit_person(name: str, label: str, father_name: str, mother_name: str, spouses_text: str, is_matrilineal_main_line: bool, is_exhumation: bool, note: str) -> None:
     people = st.session_state.people
     editing_id = st.session_state.editing_id
     if not name.strip():
@@ -381,6 +383,7 @@ def submit_person(name: str, label: str, father_name: str, mother_name: str, spo
     person = people[editing_id]
     person.father = find_or_create_person(people, father_name)
     person.mother = find_or_create_person(people, mother_name)
+    person.is_matrilineal_main_line = is_matrilineal_main_line
     person.is_exhumation = is_exhumation
     person.non_exhumation_note = "" if is_exhumation else note.strip()
     spouse_ids = [find_or_create_person(people, spouse_name) for spouse_name in spouse_names(spouses_text)]
@@ -450,11 +453,12 @@ def main() -> None:
             father = st.text_input("父親（姓名）", value=people[editing.father].name if editing and editing.father in people else "", key=f"father_{form_id}")
             mother = st.text_input("母親（姓名）", value=people[editing.mother].name if editing and editing.mother in people else "", key=f"mother_{form_id}")
             spouse_text = st.text_input("配偶（可用逗號或頓號分隔）", value="、".join(people[spouse_id].name for spouse_id in editing.spouses if spouse_id in people) if editing else "", key=f"spouses_{form_id}")
+            matrilineal = st.checkbox("是否為招贅（其子女直系主幹改依母系）", value=editing.is_matrilineal_main_line if editing else False, key=f"matrilineal_{form_id}")
             marked = st.checkbox("是否為本次起掘人數", value=editing.is_exhumation if editing else False, key=f"exhumation_{form_id}")
-            note = st.text_input("未列入起掘人數說明", value=editing.non_exhumation_note if editing else "", placeholder="例如：已移置他處", key=f"note_{form_id}")
+            note = st.text_input("備註", value=editing.non_exhumation_note if editing else "", placeholder="例如：已移置他處", key=f"note_{form_id}")
             submitted = st.form_submit_button("更新人物" if editing else "新增人物", use_container_width=True)
         if submitted:
-            submit_person(name, label, father, mother, spouse_text, marked, note)
+            submit_person(name, label, father, mother, spouse_text, matrilineal, marked, note)
         if editing and st.button("取消編輯", use_container_width=True):
             st.session_state.editing_id = ""
             st.session_state.form_revision += 1
@@ -542,10 +546,12 @@ def main() -> None:
             details.append(f"母：{people[person.mother].name}")
         if person.spouses:
             details.append("配偶：" + "、".join(people[spouse_id].name for spouse_id in person.spouses if spouse_id in people))
+        if person.is_matrilineal_main_line:
+            details.append("招贅（子女依母系主幹）")
         if person.is_exhumation:
             details.append("列入本次起掘人數")
         elif person.non_exhumation_note:
-            details.append(f"說明：{person.non_exhumation_note}")
+            details.append(f"備註：{person.non_exhumation_note}")
         left, middle, right = st.columns([7, 1, 1])
         left.write(f"**{person.name}**　" + "　".join(details))
         if person_id in hidden:

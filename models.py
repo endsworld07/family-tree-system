@@ -23,10 +23,13 @@ class Person:
 
     spouses: list[str] = field(default_factory=list)
 
+    # 此人為招贅者時，其子女的祖系主幹改由子女的母親往上追溯。
+    is_matrilineal_main_line: bool = False
+
     # 是否列入本次起掘人數統計
     is_exhumation: bool = False
 
-    # 未列入起掘人數時顯示於關係圖的小字說明，例如：已移置他處
+    # 顯示於關係圖的小字備註，例如：已移置他處
     non_exhumation_note: str = ""
 
 

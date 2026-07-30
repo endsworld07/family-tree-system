@@ -29,6 +29,7 @@ class DataLoader:
                 father=item.get("father"),
                 mother=item.get("mother"),
                 spouses=item.get("spouses", []),
+                is_matrilineal_main_line=item.get("is_matrilineal_main_line", False),
                 is_exhumation=item.get("is_exhumation", False),
                 non_exhumation_note=item.get("non_exhumation_note", ""),
             )
