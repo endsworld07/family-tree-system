@@ -132,8 +132,11 @@ class SvgRenderer:
             junction_y = (ay + min(target[1] for target in targets)) / 2
             if junction_y <= ay:
                 return ''
-        left_x = min(target[0] for target in targets)
-        right_x = max(target[0] for target in targets)
+        # Include the parent anchor in the horizontal span.  With multiple
+        # spouses, the child-bearing spouse can be offset left or right while
+        # a single child remains centred under the parent.
+        left_x = min(ax, *(target[0] for target in targets))
+        right_x = max(ax, *(target[0] for target in targets))
         parts = [f'<path class="connection-bar" d="M {ax} {ay} L {ax} {junction_y}" />']
         if left_x != right_x:
             parts.append(f'<path class="connection-bar" d="M {left_x} {junction_y} L {right_x} {junction_y}" />')
