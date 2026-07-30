@@ -140,6 +140,43 @@ def missing_from_svg(people: Dict[str, Person], layout) -> set[str]:
     return set(people) if layout is None else set(people) - set(layout.positions)
 
 
+def connection_diagnostics(people: Dict[str, Person], applicant_id: str, layout) -> list[dict]:
+    """Explain why each recorded parent-child relationship can or cannot be drawn."""
+    relationships = RelationshipEngine(people).build()
+    diagnostics: list[dict] = []
+    positions = layout.positions if layout else {}
+    for child_id, (father_id, mother_id) in relationships.get("parents", {}).items():
+        if not father_id and not mother_id:
+            continue
+        child = people[child_id]
+        father_name = people[father_id].name if father_id in people else "未找到"
+        mother_name = people[mother_id].name if mother_id in people else "未找到"
+        anchor_id = mother_id if mother_id in positions else father_id
+        if child_id not in positions:
+            reason = "子女未排入 SVG"
+        elif anchor_id not in positions:
+            reason = "父母未排入 SVG"
+        else:
+            anchor = positions[anchor_id]
+            child_position = positions[child_id]
+            anchor_bottom = anchor.row * SvgRenderer.ROW_GAP + SvgRenderer.NODE_HEIGHT / 2
+            child_top = child_position.row * SvgRenderer.ROW_GAP - SvgRenderer.NODE_HEIGHT / 2
+            if child_top <= anchor_bottom:
+                reason = "父母與子女框相接；沒有可見的連線空隙"
+            else:
+                reason = "應顯示連線"
+        diagnostics.append({
+            "子女": child.name,
+            "父親": father_name if father_id else "未填寫",
+            "母親": mother_name if mother_id else "未填寫",
+            "父親位置": str(positions.get(father_id, "未排入")),
+            "母親位置": str(positions.get(mother_id, "未排入")),
+            "子女位置": str(positions.get(child_id, "未排入")),
+            "診斷": reason,
+        })
+    return diagnostics
+
+
 def exhumation_count(people: Dict[str, Person]) -> int:
     return sum(person.is_exhumation for person in people.values())
 
@@ -226,25 +263,36 @@ def export_pdf(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
         "故由本人申請辦理遷葬事宜，特立切結，如有虛偽造假及相關法律糾紛，概由本人負責，與貴所無涉。",
     ]
     document.setFont(font, 10)
+
+    def draw_justified_line(line: str, baseline_y: float, underline_count: bool = False) -> None:
+        count_text = str(count)
+        count_start = line.find(count_text) if underline_count else -1
+        # Keep a multi-digit count such as "10" as one token.  Character
+        # justification must not stretch its digits apart.
+        if count_start >= 0:
+            tokens = list(line[:count_start]) + [count_text] + list(line[count_start + len(count_text):])
+        else:
+            tokens = list(line)
+        widths = [pdfmetrics.stringWidth(token, font, 10) for token in tokens]
+        gap = (page_width - margin * 2 - sum(widths)) / max(1, len(tokens) - 1)
+        x = margin
+        for token, width in zip(tokens, widths):
+            document.drawString(x, baseline_y, token)
+            if underline_count and token == count_text:
+                document.line(x, baseline_y - 1.5, x + width, baseline_y - 1.5)
+            x += width + gap
+
     y = 192
     for line_number, line in enumerate(lines):
-        widths = [pdfmetrics.stringWidth(character, font, 10) for character in line]
-        gap = (page_width - margin * 2 - sum(widths)) / max(1, len(line) - 1)
-        count_start = line.find(str(count)) if line_number == 0 else -1
-        x = margin
-        for index, (character, width) in enumerate(zip(line, widths)):
-            document.drawString(x, y, character)
-            if count_start <= index < count_start + len(str(count)):
-                document.line(x, y - 1.5, x + width, y - 1.5)
-            x += width + gap
+        draw_justified_line(line, y, underline_count=line_number == 0)
         y -= 15
     y -= 4
     document.drawString(margin, y, "此致")
     y -= 18
     document.drawString(margin, y, recipient or "____________________________")
     y -= 31
-    document.drawCentredString(page_width / 2, y, "具結人：___________________（簽章）")
-    y -= 25
+    document.drawCentredString(page_width / 2, y, "具結人：_________________________（簽章）")
+    y -= 45
     document.drawCentredString(page_width / 2, y, "中華民國 ____ 年 ____ 月 ____ 日")
     document.save()
     return output.getvalue()
@@ -343,6 +391,10 @@ def main() -> None:
     applicant_id: str = st.session_state.applicant_id
     svg, layout = build_svg(people, applicant_id)
     hidden = missing_from_svg(people, layout)
+    chart_signature = json.dumps(person_payload(people, applicant_id), ensure_ascii=False, sort_keys=True)
+    if st.session_state.get("export_signature") != chart_signature:
+        st.session_state.pop("pdf_bytes", None)
+        st.session_state.pop("xlsx_bytes", None)
 
     st.title("親屬關係表")
     with st.sidebar:
@@ -367,10 +419,19 @@ def main() -> None:
 
         st.divider()
         st.metric("本次起掘人數", exhumation_count(people))
-        recipient = st.text_input("此致（受文單位）", placeholder="例如：觀音區公所")
         graph_png = svg_png(svg, people, layout) if svg and layout else None
-        st.download_button("下載 PDF（直式 A4）", data=export_pdf(graph_png, exhumation_count(people), recipient), file_name="親屬關係表.pdf", mime="application/pdf", disabled=not bool(svg), use_container_width=True)
-        st.download_button("下載 Excel", data=export_xlsx(graph_png, exhumation_count(people), recipient), file_name="親屬關係表.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", disabled=not bool(svg), use_container_width=True)
+        with st.form("export_form", clear_on_submit=False):
+            recipient = st.text_input("此致（受文單位）", placeholder="例如：觀音區公所")
+            create_export = st.form_submit_button("產生匯出檔", disabled=not bool(svg), use_container_width=True)
+        if create_export and graph_png:
+            st.session_state.pdf_bytes = export_pdf(graph_png, exhumation_count(people), recipient)
+            st.session_state.xlsx_bytes = export_xlsx(graph_png, exhumation_count(people), recipient)
+            st.session_state.export_signature = chart_signature
+        if st.session_state.get("pdf_bytes"):
+            st.download_button("下載 PDF（直式 A4）", data=st.session_state.pdf_bytes, file_name="親屬關係表.pdf", mime="application/pdf", use_container_width=True)
+            st.download_button("下載 Excel", data=st.session_state.xlsx_bytes, file_name="親屬關係表.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        else:
+            st.caption("填寫受文單位後，按「產生匯出檔」。")
         st.download_button("下載目前資料", data=json.dumps(person_payload(people, applicant_id), ensure_ascii=False, indent=2), file_name="親屬關係表資料.json", mime="application/json", use_container_width=True)
 
         st.divider()
@@ -400,6 +461,10 @@ def main() -> None:
         st.markdown(svg, unsafe_allow_html=True)
     else:
         st.info("請新增人物，並設定申請人。")
+
+    with st.expander("連線診斷（用於查詢未出現的親子線）"):
+        st.caption("可在表格中尋找「陳阿夏」，確認系統讀取到的父母與排版位置。")
+        st.dataframe(connection_diagnostics(people, applicant_id, layout), use_container_width=True, hide_index=True)
 
     st.subheader("目前人物")
     for person_id, person in people.items():

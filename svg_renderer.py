@@ -149,7 +149,15 @@ class SvgRenderer:
         if source_pos is None or target_pos is None:
             return source_bottom
         x, y = source_bottom
-        for spouse_id in self.layout_result.spouse_lookup:
+        # Only the source person's own spouse may sit in the path.  Looking at
+        # every spouse in the same column can incorrectly suppress a valid
+        # parent-child line in a neighbouring family branch.
+        spouse_ids = set(self.people.get(source_id, Person(id="", name="")).spouses)
+        spouse_ids.update(
+            person_id for person_id, person in self.people.items()
+            if source_id in person.spouses
+        )
+        for spouse_id in spouse_ids:
             spouse_pos = self.layout_result.positions.get(spouse_id)
             if spouse_pos is None:
                 continue
