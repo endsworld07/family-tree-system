@@ -391,6 +391,23 @@ def init_state() -> None:
         st.session_state.active_save_id = ""
     if "save_name_input" not in st.session_state:
         st.session_state.save_name_input = ""
+    if st.session_state.pop("reset_save_name", False):
+        st.session_state.save_name_input = ""
+
+    # A Streamlit rerun can retain the selected-save id while a widget value
+    # is recreated.  Rebuild the missing display name (and, defensively, an
+    # empty working copy) from the selected saved record.
+    active_saved = next(
+        (saved for saved in st.session_state.saves if saved.get("id") == st.session_state.active_save_id),
+        None,
+    )
+    if st.session_state.active_save_id and active_saved is None:
+        st.session_state.active_save_id = ""
+    elif active_saved:
+        if not st.session_state.save_name_input:
+            st.session_state.save_name_input = active_saved.get("name", "")
+        if not st.session_state.people and active_saved.get("payload", {}).get("people"):
+            st.session_state.people, st.session_state.applicant_id = people_from_payload(active_saved["payload"])
 
 
 def main() -> None:
@@ -445,32 +462,36 @@ def main() -> None:
 
         st.divider()
         st.text_input("儲存名稱", key="save_name_input", placeholder="第一次儲存時請輸入名稱")
-        if st.session_state.active_save_id:
+        active_saved = next(
+            (saved for saved in st.session_state.saves if saved.get("id") == st.session_state.active_save_id),
+            None,
+        )
+        if active_saved:
             st.caption("目前正在編輯已儲存的關係表；直接按儲存即可更新同一份資料。")
         if st.button("儲存目前關係表", use_container_width=True):
-            save_name = st.session_state.save_name_input.strip()
+            # An opened chart can always be saved under its existing name,
+            # even if Streamlit recreated the name input as blank.
+            save_name = st.session_state.save_name_input.strip() or (active_saved or {}).get("name", "")
             if not save_name:
                 st.warning("請先輸入儲存名稱。")
-                st.stop()
-
-            saved_id = st.session_state.active_save_id or uuid4().hex
-            saves = [saved for saved in st.session_state.saves if saved["id"] != saved_id]
-            # A newly named chart replaces an older chart with the same name,
-            # while an opened chart is updated by its stable id.
-            if not st.session_state.active_save_id:
-                saves = [saved for saved in saves if saved["name"] != save_name]
-            saves.append({"id": saved_id, "name": save_name, "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "payload": person_payload(people, applicant_id)})
-            write_saved_families(saves)
-            st.session_state.saves = saves
-            st.session_state.active_save_id = saved_id
-            st.rerun()
+            else:
+                saved_id = st.session_state.active_save_id or uuid4().hex
+                saves = [saved for saved in st.session_state.saves if saved["id"] != saved_id]
+                # A newly named chart replaces an older chart with the same name,
+                # while an opened chart is updated by its stable id.
+                if not st.session_state.active_save_id:
+                    saves = [saved for saved in saves if saved["name"] != save_name]
+                saves.append({"id": saved_id, "name": save_name, "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "payload": person_payload(people, applicant_id)})
+                write_saved_families(saves)
+                st.session_state.saves = saves
+                st.session_state.active_save_id = saved_id
+                st.rerun()
         for saved in st.session_state.saves:
             with st.expander(f"{saved['name']}（{saved['saved_at']}）"):
                 if st.button("開啟", key=f"load_{saved['id']}"):
                     st.session_state.people, st.session_state.applicant_id = people_from_payload(saved["payload"])
                     st.session_state.editing_id = ""
                     st.session_state.active_save_id = saved["id"]
-                    st.session_state.save_name_input = saved["name"]
                     st.rerun()
                 if st.button("刪除此儲存", key=f"delete_save_{saved['id']}"):
                     saves = [item for item in st.session_state.saves if item["id"] != saved["id"]]
@@ -478,12 +499,12 @@ def main() -> None:
                     st.session_state.saves = saves
                     if st.session_state.active_save_id == saved["id"]:
                         st.session_state.active_save_id = ""
-                        st.session_state.save_name_input = ""
+                        st.session_state.reset_save_name = True
                     st.rerun()
         if st.button("清除目前人物", type="secondary", use_container_width=True):
             st.session_state.people, st.session_state.applicant_id, st.session_state.editing_id = {}, "", ""
             st.session_state.active_save_id = ""
-            st.session_state.save_name_input = ""
+            st.session_state.reset_save_name = True
             st.rerun()
 
     if svg:
