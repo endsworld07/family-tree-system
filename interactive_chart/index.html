@@ -2,7 +2,6 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <script src="https://unpkg.com/streamlit-component-lib@1.6.0/dist/index.js"></script>
   <style>
     html, body, #chart { margin: 0; padding: 0; width: 100%; }
     #chart svg { display: block; max-width: 100%; height: auto; }
@@ -13,25 +12,43 @@
 <body>
   <div id="chart"></div>
   <script>
-    const { Streamlit } = window.streamlitComponentLib;
     const chart = document.getElementById("chart");
 
-    function updateHeight() {
-      requestAnimationFrame(() => Streamlit.setFrameHeight(chart.scrollHeight));
+    // This is the small public Streamlit component message protocol.  It is
+    // implemented locally so the deployed chart has no CDN/network runtime
+    // dependency.
+    function sendMessage(type, payload = {}) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type,
+        ...payload,
+      }, "*");
     }
 
-    function render(event) {
-      chart.innerHTML = event.detail.args.svg || "";
+    function updateHeight() {
+      requestAnimationFrame(() => {
+        sendMessage("streamlit:setFrameHeight", {
+          height: Math.max(chart.scrollHeight, chart.getBoundingClientRect().height),
+        });
+      });
+    }
+
+    function render(args) {
+      chart.innerHTML = args.svg || "";
       chart.querySelectorAll("[data-person-id]").forEach((node) => {
         node.addEventListener("click", () => {
-          Streamlit.setComponentValue(node.dataset.personId);
+          sendMessage("streamlit:setComponentValue", { value: node.dataset.personId });
         });
       });
       updateHeight();
     }
 
-    Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, render);
-    Streamlit.setComponentReady();
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "streamlit:render") {
+        render(event.data.args || {});
+      }
+    });
+    sendMessage("streamlit:componentReady", { apiVersion: 1 });
   </script>
 </body>
 </html>
