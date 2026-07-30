@@ -170,46 +170,6 @@ def missing_from_svg(people: Dict[str, Person], layout) -> set[str]:
     return set(people) if layout is None else set(people) - set(layout.positions)
 
 
-def connection_diagnostics(people: Dict[str, Person], applicant_id: str, layout) -> list[dict]:
-    """Explain why each recorded parent-child relationship can or cannot be drawn."""
-    relationships = RelationshipEngine(people).build()
-    diagnostics: list[dict] = []
-    positions = layout.positions if layout else {}
-    for child_id, (father_id, mother_id) in relationships.get("parents", {}).items():
-        if not father_id and not mother_id:
-            continue
-        child = people[child_id]
-        father_name = people[father_id].name if father_id in people else "未找到"
-        mother_name = people[mother_id].name if mother_id in people else "未找到"
-        anchor_id = mother_id if mother_id in positions else father_id
-        if child_id not in positions:
-            reason = "子女未排入 SVG"
-        elif anchor_id not in positions:
-            reason = "父母未排入 SVG"
-        else:
-            anchor = positions[anchor_id]
-            child_position = positions[child_id]
-            anchor_bottom = anchor.row * SvgRenderer.ROW_GAP + SvgRenderer.NODE_HEIGHT / 2
-            child_top = child_position.row * SvgRenderer.ROW_GAP - SvgRenderer.NODE_HEIGHT / 2
-            if child_top <= anchor_bottom:
-                reason = "父母與子女框相接；沒有可見的連線空隙"
-            else:
-                reason = "應顯示連線"
-        diagnostics.append({
-            "子女": child.name,
-            "子女 ID": child_id,
-            "父親": father_name if father_id else "未填寫",
-            "父親 ID": father_id or "未填寫",
-            "母親": mother_name if mother_id else "未填寫",
-            "母親 ID": mother_id or "未填寫",
-            "父親位置": str(positions.get(father_id, "未排入")),
-            "母親位置": str(positions.get(mother_id, "未排入")),
-            "子女位置": str(positions.get(child_id, "未排入")),
-            "診斷": reason,
-        })
-    return diagnostics
-
-
 def exhumation_count(people: Dict[str, Person]) -> int:
     return sum(person.is_exhumation for person in people.values())
 
@@ -577,10 +537,6 @@ def main() -> None:
         st.markdown(svg, unsafe_allow_html=True)
     else:
         st.info("請新增人物，並設定申請人。")
-
-    with st.expander("連線診斷（用於查詢未出現的親子線）"):
-        st.caption("可在表格中尋找「陳阿夏」，確認系統讀取到的父母與排版位置。")
-        st.dataframe(connection_diagnostics(people, applicant_id, layout), use_container_width=True, hide_index=True)
 
     st.subheader("目前人物")
     for person_id, person in people.items():
