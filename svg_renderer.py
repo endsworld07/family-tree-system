@@ -182,11 +182,11 @@ class SvgRenderer:
                 continue
             x = self._origin_x + position.column * self.COLUMN_GAP - self.NODE_WIDTH // 2
             y = self._origin_y + position.row * self.ROW_GAP - self.NODE_HEIGHT // 2
-            # The SVG remains usable for PDF/Word export, while its on-screen
-            # version can open the selected person in Streamlit's edit form.
+            # The on-screen Streamlit component reads this id and opens the
+            # matching edit form.  It remains harmless in PDF/Word exports.
             self._elements.append(
-                f'<a class="person-link" href="?edit_person={self._escape(person_id)}" target="_self">'
-                f'{self._draw_person_box(x, y, person)}</a>'
+                f'<g class="person-link" data-person-id="{self._escape(person_id)}">'
+                f'{self._draw_person_box(x, y, person)}</g>'
             )
 
     def _draw_person_box(self, x: int, y: int, person: Person) -> str:
