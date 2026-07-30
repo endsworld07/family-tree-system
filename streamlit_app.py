@@ -320,46 +320,80 @@ def export_pdf(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
     return output.getvalue()
 
 
-def export_xlsx(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
-    from openpyxl import Workbook
-    from openpyxl.drawing.image import Image
-    from openpyxl.styles import Alignment, Font
-    from openpyxl.worksheet.page import PageMargins
+def export_docx(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
+    """Create a stable, editable A4 Word version of the relationship chart."""
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Pt
+    from docx.oxml.ns import qn
+    from PIL import Image
 
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "親屬關係表"
-    sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
-    sheet.page_setup.orientation = "landscape"
-    sheet.page_setup.fitToWidth = sheet.page_setup.fitToHeight = 1
-    sheet.sheet_properties.pageSetUpPr.fitToPage = True
-    sheet.page_margins = PageMargins(left=0.3937, right=0.3937, top=0.3937, bottom=0.3937, header=0, footer=0)
-    sheet.print_options.horizontalCentered = sheet.print_options.verticalCentered = True
-    sheet.sheet_view.showGridLines = False
-    for column in "ABCDEFGH":
-        sheet.column_dimensions[column].width = 16
-    for row in range(1, 39):
-        sheet.row_dimensions[row].height = 18
-    sheet.merge_cells("A1:H2")
-    sheet["A1"] = "親屬關係表"
-    sheet["A1"].font = Font(name="Microsoft JhengHei", size=20, bold=True)
-    sheet["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    def set_font(run, size: float, *, bold: bool = False) -> None:
+        run.font.name = "Taipei Sans TC Beta"
+        run._element.rPr.rFonts.set(qn("w:eastAsia"), "Taipei Sans TC Beta")
+        run.font.size = Pt(size)
+        run.bold = bold
+
+    document = Document()
+    section = document.sections[0]
+    section.page_width, section.page_height = Cm(21), Cm(29.7)
+    section.top_margin = section.bottom_margin = Cm(1)
+    section.left_margin = section.right_margin = Cm(1)
+    section.header_distance = section.footer_distance = Cm(0.5)
+
+    normal = document.styles["Normal"]
+    normal.font.name = "Taipei Sans TC Beta"
+    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Taipei Sans TC Beta")
+    normal.font.size = Pt(10)
+    normal.paragraph_format.space_after = Pt(0)
+
+    title = document.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.paragraph_format.space_after = Pt(6)
+    set_font(title.add_run("親　屬　關　係　表"), 18)
+
     if graph_png:
         graph_png.seek(0)
-        image = Image(graph_png)
-        ratio = min(820 / image.width, 330 / image.height)
-        image.width, image.height = image.width * ratio, image.height * ratio
-        sheet.add_image(image, "A3")
-    sheet.merge_cells("A23:H27")
-    sheet["A23"] = f"以上共 {count} 位被申請起掘，其確係本人祖先（關係或稱謂如上表）無訛，且均由本人祭拜，故由本人申請辦理遷葬事宜，特立切結，如有虛偽造假及相關法律糾紛，概由本人負責，與貴所無涉。"
-    sheet["A23"].alignment = Alignment(wrap_text=True, vertical="top")
-    sheet["A23"].font = Font(name="Microsoft JhengHei", size=10)
-    for cell, value in (("A29", "此致"), ("A30", recipient or "____________________________"), ("A33", "具結人：___________________（簽章）"), ("A36", "中華民國 ____ 年 ____ 月 ____ 日")):
-        sheet.merge_cells(f"{cell}:H{cell[1:]}")
-        sheet[cell] = value
-    sheet.print_area = "A1:H38"
+        with Image.open(graph_png) as image:
+            # Keep the chart and declaration on an A4 page whenever its
+            # proportions allow it.  Larger charts remain readable and flow
+            # naturally onto a following page rather than being distorted.
+            max_width_cm, max_height_cm = 18.5, 13.5
+            scale = min(max_width_cm / image.width, max_height_cm / image.height)
+            picture_width = Cm(image.width * scale)
+        graph_png.seek(0)
+        graph = document.add_paragraph()
+        graph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        graph.paragraph_format.space_after = Pt(5)
+        graph.add_run().add_picture(graph_png, width=picture_width)
+
+    statement = document.add_paragraph()
+    statement.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    statement.paragraph_format.line_spacing = 1.1
+    statement.paragraph_format.space_after = Pt(3)
+    set_font(statement.add_run("以上共 "), 10)
+    count_run = statement.add_run(str(count))
+    set_font(count_run, 10)
+    count_run.underline = True
+    set_font(statement.add_run(" 位被申請起掘，其確係本人祖先（關係或稱謂如上表）無訛，且均由本人祭拜，故由本人申請辦理遷葬事宜，特立切結，如有虛偽造假及相關法律糾紛，概由本人負責，與貴所無涉。"), 10)
+
+    closing = document.add_paragraph()
+    closing.paragraph_format.space_after = Pt(1)
+    set_font(closing.add_run("此致"), 10)
+    recipient_line = document.add_paragraph()
+    recipient_line.paragraph_format.space_after = Pt(7)
+    set_font(recipient_line.add_run(recipient or "____________________________"), 10)
+
+    signer = document.add_paragraph()
+    signer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    signer.paragraph_format.space_after = Pt(13)
+    set_font(signer.add_run("具結人：_________________________（簽章）"), 10)
+    date = document.add_paragraph()
+    date.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    set_font(date.add_run("中華民國 ____ 年 ____ 月 ____ 日"), 10)
+
     output = BytesIO()
-    workbook.save(output)
+    document.save(output)
     return output.getvalue()
 
 
@@ -440,7 +474,7 @@ def main() -> None:
     chart_signature = json.dumps(person_payload(people, applicant_id), ensure_ascii=False, sort_keys=True)
     if st.session_state.get("export_signature") != chart_signature:
         st.session_state.pop("pdf_bytes", None)
-        st.session_state.pop("xlsx_bytes", None)
+        st.session_state.pop("docx_bytes", None)
 
     st.title("親屬關係表")
     with st.sidebar:
@@ -472,11 +506,11 @@ def main() -> None:
             create_export = st.form_submit_button("產生匯出檔", disabled=not bool(svg), use_container_width=True)
         if create_export and graph_png:
             st.session_state.pdf_bytes = export_pdf(graph_png, exhumation_count(people), recipient)
-            st.session_state.xlsx_bytes = export_xlsx(graph_png, exhumation_count(people), recipient)
+            st.session_state.docx_bytes = export_docx(graph_png, exhumation_count(people), recipient)
             st.session_state.export_signature = chart_signature
         if st.session_state.get("pdf_bytes"):
             st.download_button("下載 PDF（直式 A4）", data=st.session_state.pdf_bytes, file_name="親屬關係表.pdf", mime="application/pdf", use_container_width=True)
-            st.download_button("下載 Excel", data=st.session_state.xlsx_bytes, file_name="親屬關係表.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+            st.download_button("下載 Word", data=st.session_state.docx_bytes, file_name="親屬關係表.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
         else:
             st.caption("填寫受文單位後，按「產生匯出檔」。")
         st.download_button("下載目前資料", data=json.dumps(person_payload(people, applicant_id), ensure_ascii=False, indent=2), file_name="親屬關係表資料.json", mime="application/json", use_container_width=True)
