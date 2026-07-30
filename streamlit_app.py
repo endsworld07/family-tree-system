@@ -78,7 +78,24 @@ def load_saved_families() -> list[dict]:
     except (OSError, json.JSONDecodeError):
         return []
     saves = data.get("saves", [])
-    return saves if isinstance(saves, list) else []
+    if not isinstance(saves, list):
+        return []
+
+    # Remove only the bundled demonstration chart from older deployments.
+    # It was saved as "王家人" and contains these three sample people.  A
+    # user-created chart merely named 王家人 is therefore left untouched.
+    def is_legacy_wang_demo(saved: dict) -> bool:
+        names = {
+            person.get("name")
+            for person in saved.get("payload", {}).get("people", [])
+            if isinstance(person, dict)
+        }
+        return saved.get("name") == "王家人" and {"王小明", "王大明", "王老明"}.issubset(names)
+
+    filtered_saves = [saved for saved in saves if not is_legacy_wang_demo(saved)]
+    if len(filtered_saves) != len(saves):
+        write_saved_families(filtered_saves)
+    return filtered_saves
 
 
 def write_saved_families(saves: list[dict]) -> None:
