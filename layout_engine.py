@@ -132,6 +132,18 @@ class LayoutEngine:
                 pos.row for pos in (father_pos, mother_pos) if pos is not None
             )
             child_row = parent_row + 2
+            # A collateral parent can be placed before its child-bearing
+            # spouse.  That spouse is added during the next spouse pass.  In
+            # that case reserve the spouse row now, otherwise the later spouse
+            # would be inserted directly between the parent and child and hide
+            # their parent-child connection.
+            missing_spouse_id = (
+                mother_id if father_pos is not None and mother_pos is None else
+                father_id if mother_pos is not None and father_pos is None else
+                None
+            )
+            if missing_spouse_id in self.people:
+                child_row += 1
             children = [
                 child_id for child_id in group_children
                 if child_id in self.people and child_id not in self._placed
