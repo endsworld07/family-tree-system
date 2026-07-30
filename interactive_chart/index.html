@@ -24,10 +24,7 @@
       chart.innerHTML = event.detail.args.svg || "";
       chart.querySelectorAll("[data-person-id]").forEach((node) => {
         node.addEventListener("click", () => {
-          Streamlit.setComponentValue({
-            person_id: node.dataset.personId,
-            event_id: `${Date.now()}-${Math.random()}`,
-          });
+          Streamlit.setComponentValue(node.dataset.personId);
         });
       });
       updateHeight();
