@@ -385,6 +385,12 @@ def init_state() -> None:
         st.session_state.editing_id = ""
     if "form_revision" not in st.session_state:
         st.session_state.form_revision = 0
+    # The selected saved chart is remembered separately from its data.  This
+    # lets the user keep editing it and press Save without re-entering a name.
+    if "active_save_id" not in st.session_state:
+        st.session_state.active_save_id = ""
+    if "save_name_input" not in st.session_state:
+        st.session_state.save_name_input = ""
 
 
 def main() -> None:
@@ -438,26 +444,46 @@ def main() -> None:
         st.download_button("下載目前資料", data=json.dumps(person_payload(people, applicant_id), ensure_ascii=False, indent=2), file_name="親屬關係表資料.json", mime="application/json", use_container_width=True)
 
         st.divider()
-        save_name = st.text_input("儲存名稱")
-        if st.button("儲存目前關係表", use_container_width=True) and save_name.strip():
-            saves = [saved for saved in st.session_state.saves if saved["name"] != save_name.strip()]
-            saves.append({"id": uuid4().hex, "name": save_name.strip(), "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "payload": person_payload(people, applicant_id)})
+        st.text_input("儲存名稱", key="save_name_input", placeholder="第一次儲存時請輸入名稱")
+        if st.session_state.active_save_id:
+            st.caption("目前正在編輯已儲存的關係表；直接按儲存即可更新同一份資料。")
+        if st.button("儲存目前關係表", use_container_width=True):
+            save_name = st.session_state.save_name_input.strip()
+            if not save_name:
+                st.warning("請先輸入儲存名稱。")
+                st.stop()
+
+            saved_id = st.session_state.active_save_id or uuid4().hex
+            saves = [saved for saved in st.session_state.saves if saved["id"] != saved_id]
+            # A newly named chart replaces an older chart with the same name,
+            # while an opened chart is updated by its stable id.
+            if not st.session_state.active_save_id:
+                saves = [saved for saved in saves if saved["name"] != save_name]
+            saves.append({"id": saved_id, "name": save_name, "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "payload": person_payload(people, applicant_id)})
             write_saved_families(saves)
             st.session_state.saves = saves
+            st.session_state.active_save_id = saved_id
             st.rerun()
         for saved in st.session_state.saves:
             with st.expander(f"{saved['name']}（{saved['saved_at']}）"):
                 if st.button("開啟", key=f"load_{saved['id']}"):
                     st.session_state.people, st.session_state.applicant_id = people_from_payload(saved["payload"])
                     st.session_state.editing_id = ""
+                    st.session_state.active_save_id = saved["id"]
+                    st.session_state.save_name_input = saved["name"]
                     st.rerun()
                 if st.button("刪除此儲存", key=f"delete_save_{saved['id']}"):
                     saves = [item for item in st.session_state.saves if item["id"] != saved["id"]]
                     write_saved_families(saves)
                     st.session_state.saves = saves
+                    if st.session_state.active_save_id == saved["id"]:
+                        st.session_state.active_save_id = ""
+                        st.session_state.save_name_input = ""
                     st.rerun()
         if st.button("清除目前人物", type="secondary", use_container_width=True):
             st.session_state.people, st.session_state.applicant_id, st.session_state.editing_id = {}, "", ""
+            st.session_state.active_save_id = ""
+            st.session_state.save_name_input = ""
             st.rerun()
 
     if svg:
