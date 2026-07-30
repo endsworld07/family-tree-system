@@ -438,6 +438,16 @@ def init_state() -> None:
 def main() -> None:
     st.set_page_config(page_title="親屬關係表", layout="wide")
     init_state()
+    # Person boxes in the SVG link back here with their id.  Consume the
+    # query parameter before building the sidebar form, then refresh once so
+    # the selected person's values are shown immediately.
+    requested_edit = st.query_params.get("edit_person", "")
+    if requested_edit:
+        st.query_params.clear()
+        if requested_edit in st.session_state.people:
+            st.session_state.editing_id = requested_edit
+            st.session_state.form_revision += 1
+            st.rerun()
     people: Dict[str, Person] = st.session_state.people
     applicant_id: str = st.session_state.applicant_id
     svg, layout = build_svg(people, applicant_id)

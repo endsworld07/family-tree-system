@@ -62,7 +62,7 @@ class SvgRenderer:
     def _begin_svg(self) -> None:
         self._elements.extend([
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{self.result.width}" height="{self.result.height}" viewBox="0 0 {self.result.width} {self.result.height}">',
-            '<style>text{font-family:"Microsoft JhengHei","PMingLiU",sans-serif;fill:#000}.person-box{fill:#fff;stroke:#000;stroke-width:.6}.person-box.inactive{fill:#eeeeee;stroke:#999}.person-box.applicant{fill:#fff3a3;stroke:#c78300;stroke-width:.9}.inactive-text{fill:#777}.connection-line,.connection-bar{stroke:#000;stroke-width:2;fill:none;stroke-linecap:square;stroke-linejoin:miter}.name-text{font-size:14px;text-anchor:middle;dominant-baseline:middle}.label-text{font-size:13px;text-anchor:middle;dominant-baseline:middle}.note-text{font-size:9px;text-anchor:middle;dominant-baseline:middle}</style>',
+            '<style>text{font-family:"Microsoft JhengHei","PMingLiU",sans-serif;fill:#000}.person-link{cursor:pointer}.person-box{fill:#fff;stroke:#000;stroke-width:.6}.person-box.inactive{fill:#eeeeee;stroke:#999}.person-box.applicant{fill:#fff3a3;stroke:#c78300;stroke-width:.9}.inactive-text{fill:#777}.connection-line,.connection-bar{stroke:#000;stroke-width:2;fill:none;stroke-linecap:square;stroke-linejoin:miter}.name-text{font-size:14px;text-anchor:middle;dominant-baseline:middle}.label-text{font-size:13px;text-anchor:middle;dominant-baseline:middle}.note-text{font-size:9px;text-anchor:middle;dominant-baseline:middle}</style>',
         ])
 
     def _end_svg(self) -> None:
@@ -182,7 +182,12 @@ class SvgRenderer:
                 continue
             x = self._origin_x + position.column * self.COLUMN_GAP - self.NODE_WIDTH // 2
             y = self._origin_y + position.row * self.ROW_GAP - self.NODE_HEIGHT // 2
-            self._elements.append(self._draw_person_box(x, y, person))
+            # The SVG remains usable for PDF/Word export, while its on-screen
+            # version can open the selected person in Streamlit's edit form.
+            self._elements.append(
+                f'<a class="person-link" href="?edit_person={self._escape(person_id)}" target="_self">'
+                f'{self._draw_person_box(x, y, person)}</a>'
+            )
 
     def _draw_person_box(self, x: int, y: int, person: Person) -> str:
         name, label = self._escape(person.name), self._escape(person.label or '')
