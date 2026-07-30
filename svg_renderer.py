@@ -74,10 +74,13 @@ class SvgRenderer:
             return
         grouped_children = set()
         for group in self.connection_result.family_groups:
-            grouped_children.update(group.children)
             path = self._family_group_path(group)
             if path:
                 self._elements.append(path)
+                # Only suppress the individual fallback after the complete
+                # shared family path was actually drawn.  Otherwise a malformed
+                # or compact family group can leave its child with no line.
+                grouped_children.update(group.children)
         # A malformed/incomplete family group can still use the old parent fallback.
         for connection in self.connection_result.parent_connections:
             if connection.target not in grouped_children:

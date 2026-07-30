@@ -167,8 +167,11 @@ def connection_diagnostics(people: Dict[str, Person], applicant_id: str, layout)
                 reason = "應顯示連線"
         diagnostics.append({
             "子女": child.name,
+            "子女 ID": child_id,
             "父親": father_name if father_id else "未填寫",
+            "父親 ID": father_id or "未填寫",
             "母親": mother_name if mother_id else "未填寫",
+            "母親 ID": mother_id or "未填寫",
             "父親位置": str(positions.get(father_id, "未排入")),
             "母親位置": str(positions.get(mother_id, "未排入")),
             "子女位置": str(positions.get(child_id, "未排入")),
