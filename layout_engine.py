@@ -37,9 +37,8 @@ class LayoutEngine:
     COLUMN_GAP = 180
     ROW_GAP = 60
     NODE_MARGIN = 15
-    # 血親支系比配偶需要更大的橫向空間，避免大型家族的下代
-    # 回到中央主幹旁而產生交叉線。
-    BLOOD_BRANCH_SPACING = 2
+    # 維持緊湊欄距；大型家族不再透過把整支分支大幅外推來避線。
+    BLOOD_BRANCH_SPACING = 1
 
     def __init__(self, people: Dict[str, Person], relationships: dict, applicant_id: str):
         self.people = people
@@ -94,9 +93,12 @@ class LayoutEngine:
                 break
         # A final spouse pass covers spouses of the last descendant layer.
         self._build_spouses()
-        self._ensure_descendants_below_parents()
-        self._ensure_child_parent_columns()
-        self._ensure_connection_lanes()
+        # Keep compact sibling placement, but avoid the one misleading case
+        # where a later child sits directly under an aunt/uncle in the same
+        # column.  Only that child branch is moved to the other side; this is
+        # deliberately local so a large family never makes unrelated people
+        # drift far across the page.
+        self._avoid_false_parent_alignment()
         self._finalize_positions()
         self.result.main_line = list(self._main_line)
         self.result.family_groups = list(self._family_groups_raw)
@@ -331,6 +333,55 @@ class LayoutEngine:
                 self._occupied.add((position.column, position.row))
             return
 
+    def _avoid_false_parent_alignment(self) -> None:
+        """Prevent a child from visually inheriting an aunt/uncle's branch.
+
+        A child may be placed after a collateral sibling has already claimed
+        its intended column.  We do not rearrange that sibling or its whole
+        family.  Instead, move only the child's own lower branch to the other
+        side of its parent.  This preserves compact spacing and keeps the
+        parent-child elbow short and unambiguous.
+        """
+        for (father_id, mother_id), children in self._family_groups.items():
+            parent_positions = [
+                self.result.positions[parent_id]
+                for parent_id in (father_id, mother_id)
+                if parent_id in self.result.positions
+            ]
+            if not parent_positions:
+                continue
+            anchor = (
+                self.result.positions[mother_id]
+                if mother_id in self.result.positions
+                else self.result.positions.get(father_id)
+            )
+            if anchor is None:
+                continue
+            parent_row = max(position.row for position in parent_positions)
+            parent_ids = {father_id, mother_id}
+            for child_id in children:
+                child = self.result.positions.get(child_id)
+                if child is None or child.column == anchor.column:
+                    continue
+                blocker = next(
+                    (
+                        person_id
+                        for person_id, position in self.result.positions.items()
+                        if person_id not in parent_ids
+                        and person_id != child_id
+                        and position.row == parent_row
+                        and abs(position.column - child.column) < 1e-9
+                    ),
+                    None,
+                )
+                if blocker is None:
+                    continue
+                # Put this child on the opposite side of the parent.  The
+                # move helper skips occupied sibling slots, so it stops at
+                # the nearest available column rather than expanding widely.
+                direction = -1 if child.column > anchor.column else 1
+                self._move_descendant_branch_horizontally(child_id, direction)
+
     def _build_main_chain(self) -> None:
         """Place the lineage selected by the father's 招贅 status on one axis."""
         chain: List[str] = []
@@ -545,6 +596,24 @@ class LayoutEngine:
             if self._is_slot_available(candidate_column, row, person_id):
                 self._place(person_id, candidate_column, row)
                 return
+
+    def _place_sibling_outward(
+        self, person_id: str, column: int, row: int, origin_column: int
+    ) -> None:
+        """Keep a sibling branch off an already-used collateral track."""
+        direction = 1 if column >= origin_column else -1
+        candidate_column = column
+        for distance in range(len(self.people) + 2):
+            same_track_branch = any(
+                placed_id not in self._main_line
+                and position.row != row
+                and abs(position.column - candidate_column) < 1e-9
+                for placed_id, position in self.result.positions.items()
+            )
+            if self._is_slot_available(candidate_column, row, person_id) and not same_track_branch:
+                self._place(person_id, candidate_column, row)
+                return
+            candidate_column = column + direction * (distance + 1)
 
     def _spouse_slots_available(
         self,
