@@ -121,6 +121,11 @@ class SvgRenderer:
             return ''
         sx, sy = self._line_start_after_spouse(connection.source, connection.target, source)
         tx, ty = target
+        # Never draw a biological parent-child edge upwards.  LayoutEngine
+        # normally moves such a branch below its parent; this guard keeps a
+        # malformed imported relationship from becoming a misleading line.
+        if ty <= sy:
+            return ''
         junction_y = min(ty - self.ELBOW_MARGIN, sy + self.ELBOW_MARGIN)
         return f'<path class="connection-line" d="M {sx} {sy} L {sx} {junction_y} L {tx} {junction_y} L {tx} {ty}" />'
 

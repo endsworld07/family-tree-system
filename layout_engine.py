@@ -91,6 +91,7 @@ class LayoutEngine:
                 break
         # A final spouse pass covers spouses of the last descendant layer.
         self._build_spouses()
+        self._ensure_descendants_below_parents()
         self._finalize_positions()
         self.result.main_line = list(self._main_line)
         self.result.family_groups = list(self._family_groups_raw)
@@ -135,6 +136,62 @@ class LayoutEngine:
             target = self.applicant_id
         self.result.arrival_ancestors = ancestors
         self.result.arrival_target = target
+
+    def _ensure_descendants_below_parents(self) -> None:
+        """Normalise crowded branches so every parent-child path flows down.
+
+        A person can first be positioned as a collateral sibling and only
+        later be encountered as another family's child.  In that situation
+        the previous layout could leave the child above its recorded parent;
+        SVG then produced a backwards elbow line through neighbouring boxes.
+        Shift the complete visible descendant branch down until every edge is
+        top-to-bottom.
+        """
+        for _ in range(len(self.people) + 1):
+            changed = False
+            for father_id, mother_id in self._family_groups:
+                parent_positions = [
+                    self.result.positions[parent_id]
+                    for parent_id in (father_id, mother_id)
+                    if parent_id in self.result.positions
+                ]
+                if not parent_positions:
+                    continue
+                minimum_child_row = max(position.row for position in parent_positions) + 2
+                for child_id in self._family_groups[(father_id, mother_id)]:
+                    child_position = self.result.positions.get(child_id)
+                    if child_position is None or child_position.row >= minimum_child_row:
+                        continue
+                    self._shift_descendant_branch(child_id, minimum_child_row - child_position.row)
+                    changed = True
+            if not changed:
+                return
+
+    def _shift_descendant_branch(self, root_id: str, delta: int) -> None:
+        """Move a child, its spouse stack, and all lower descendants together."""
+        branch: set[str] = set()
+        pending = [root_id]
+        while pending:
+            person_id = pending.pop()
+            if person_id in branch or person_id not in self.result.positions:
+                continue
+            branch.add(person_id)
+            person_position = self.result.positions[person_id]
+            for spouse_id in self._spouse_ids_for(person_id):
+                spouse_position = self.result.positions.get(spouse_id)
+                if spouse_position is not None and spouse_position.row >= person_position.row:
+                    pending.append(spouse_id)
+            for (father_id, mother_id), children in self._family_groups.items():
+                if person_id in (father_id, mother_id):
+                    pending.extend(children)
+
+        for person_id in branch:
+            position = self.result.positions[person_id]
+            self._occupied.discard((position.column, position.row))
+        for person_id in branch:
+            position = self.result.positions[person_id]
+            position.row += delta
+            self._occupied.add((position.column, position.row))
 
     def _build_main_chain(self) -> None:
         """Place the lineage selected by the father's 招贅 status on one axis."""
