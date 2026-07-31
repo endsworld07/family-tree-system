@@ -73,12 +73,24 @@ class LayoutEngine:
 
         self._build_main_chain()
         self._build_sibling_rows()
-        self._build_spouses()
-        self._build_descendant_rows()
-        # Descendants may themselves have spouses, so expand them after they
-        # have received a position as well.
-        self._build_spouses()
+        # Arrival ancestors must be positioned before expansion.  They are
+        # valid roots even without a recorded parent, so their descendants
+        # can be laid out just like descendants of the applicant's lineage.
         self._place_arrival_ancestors()
+
+        # The input order is not guaranteed to be ancestor -> child.  Expand
+        # repeatedly: each pass can make a newly placed child (or its spouse)
+        # the anchor of another family.  The former one-pass approach left
+        # such branches competing for a later spouse slot and produced the
+        # stacked/crossed boxes seen in large families.
+        for _ in range(len(self.people) + 1):
+            before = len(self._placed)
+            self._build_spouses()
+            self._build_descendant_rows()
+            if len(self._placed) == before:
+                break
+        # A final spouse pass covers spouses of the last descendant layer.
+        self._build_spouses()
         self._finalize_positions()
         self.result.main_line = list(self._main_line)
         self.result.family_groups = list(self._family_groups_raw)
@@ -179,6 +191,26 @@ class LayoutEngine:
                 pos.row for pos in (father_pos, mother_pos) if pos is not None
             )
             child_row = parent_row + 2
+            # Children who share either known parent are one generation.  A
+            # child with only a father (or only a mother) used to be placed
+            # one row above their half-siblings, directly beside a spouse
+            # box.  Keep those half-sibling groups on the same generation row
+            # whenever one of them has already been positioned.
+            sibling_generation_rows = []
+            for other_group in self._family_groups_raw:
+                other_parents = {other_group.get("father"), other_group.get("mother")}
+                shares_parent = (
+                    (father_id is not None and father_id in other_parents)
+                    or (mother_id is not None and mother_id in other_parents)
+                )
+                if not shares_parent:
+                    continue
+                for other_child_id in other_group.get("children", []):
+                    other_position = self.result.positions.get(other_child_id)
+                    if other_position is not None:
+                        sibling_generation_rows.append(other_position.row)
+            if sibling_generation_rows:
+                child_row = max(child_row, max(sibling_generation_rows))
             # A collateral parent can be placed before its child-bearing
             # spouse.  That spouse is added during the next spouse pass.  In
             # that case reserve the spouse row now, otherwise the later spouse
@@ -291,7 +323,7 @@ class LayoutEngine:
         return spouse_ids
 
     def _place_near(self, person_id: str, column: int, row: int, origin_column: int) -> None:
-        if self._is_slot_available(column, row):
+        if self._is_slot_available(column, row, person_id):
             self._place(person_id, column, row)
             return
         # For a collateral branch, collisions always move farther away from
@@ -299,7 +331,7 @@ class LayoutEngine:
         direction = 1 if origin_column >= 0 else -1
         for distance in range(1, len(self.people) + 2):
             candidate_column = column + direction * distance
-            if self._is_slot_available(candidate_column, row):
+            if self._is_slot_available(candidate_column, row, person_id):
                 self._place(person_id, candidate_column, row)
                 return
 
@@ -310,7 +342,7 @@ class LayoutEngine:
         row: int,
     ) -> bool:
         return all(
-            spouse_id in self._placed or self._is_slot_available(column, row)
+            spouse_id in self._placed or self._is_slot_available(column, row, spouse_id)
             for spouse_id, column in zip(spouse_ids, spouse_columns)
         )
 
@@ -322,7 +354,7 @@ class LayoutEngine:
         direction = 1 if position.column > 0 else -1
         for distance in range(1, len(self.people) + 2):
             candidate_column = position.column + direction * distance
-            if not self._is_slot_available(candidate_column, position.row):
+            if not self._is_slot_available(candidate_column, position.row, person_id):
                 continue
             self._occupied.remove((position.column, position.row))
             position.column = candidate_column
@@ -334,17 +366,36 @@ class LayoutEngine:
         self._place_near(person_id, column, row, origin_column)
 
     def _place(self, person_id: str, column: int, row: int) -> None:
-        if person_id not in self.people or not self._is_slot_available(column, row):
+        if person_id not in self.people or not self._is_slot_available(column, row, person_id):
             return
         self.result.positions[person_id] = Position(column=column, row=row)
         self._placed.add(person_id)
         self._occupied.add((column, row))
 
-    def _is_slot_available(self, column: float, row: int) -> bool:
-        """Avoid overlapping boxes even when their fractional columns differ."""
+    def _is_slot_available(self, column: float, row: int, person_id: Optional[str] = None) -> bool:
+        """Avoid overlapping or accidentally touching boxes.
+
+        A direct vertical neighbour is reserved for an actual spouse only.
+        This prevents an unrelated branch, displaced by a crowded row, from
+        visually becoming part of a spouse stack.
+        """
         required_gap = (self.NODE_WIDTH + self.NODE_MARGIN) / self.COLUMN_GAP
         for occupied_column, occupied_row in self._occupied:
             if occupied_row == row and abs(occupied_column - column) < required_gap - 1e-9:
+                return False
+            if abs(occupied_row - row) != 1 or abs(occupied_column - column) >= required_gap - 1e-9:
+                continue
+            occupant_id = next(
+                (
+                    placed_id for placed_id, position in self.result.positions.items()
+                    if position.column == occupied_column and position.row == occupied_row
+                ),
+                None,
+            )
+            is_spouse_pair = bool(
+                person_id and occupant_id and occupant_id in self._spouse_ids_for(person_id)
+            )
+            if not is_spouse_pair:
                 return False
         return True
 
