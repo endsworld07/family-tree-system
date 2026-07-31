@@ -99,21 +99,6 @@ class SvgRenderer:
                 path = self._parent_path(connection)
                 if path:
                     self._elements.append(path)
-        # A marked arrival ancestor that already appears as a real father or
-        # mother must use that family's own sibling-style trunk.  Do not put
-        # several such ancestors on one artificial bar: that visually (and
-        # incorrectly) makes their unrelated children look like siblings.
-        ancestors_without_children = [
-            person_id
-            for person_id in self.connection_result.arrival_ancestors
-            if not any(connection.source == person_id for connection in self.connection_result.parent_connections)
-        ]
-        arrival_path = self._arrival_ancestor_path(
-            ancestors_without_children,
-            self.connection_result.arrival_target,
-        )
-        if arrival_path:
-            self._elements.append(arrival_path)
 
     def _person_center(self, person_id: str) -> Optional[Tuple[int, int]]:
         if self.layout_result is None or person_id not in self.layout_result.positions:

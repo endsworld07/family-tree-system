@@ -113,14 +113,18 @@ class LayoutEngine:
         if not ancestors:
             return
 
-        top_row = min((position.row for position in self.result.positions.values()), default=0) - 3
-        for person_id, column in zip(ancestors, self._centered_offsets(len(ancestors))):
+        # Multiple arrival ancestors are a registry-style top block, not a
+        # sibling group.  Stack them with the same no-gap treatment used for
+        # spouses and leave a clear row before the ordinary family graph.
+        top_row = min((position.row for position in self.result.positions.values()), default=0)
+        first_row = top_row - len(ancestors) - 2
+        for index, person_id in enumerate(ancestors):
             old = self.result.positions.get(person_id)
             if old is not None:
                 self._occupied.discard((old.column, old.row))
-            self.result.positions[person_id] = Position(column=column, row=top_row)
+            self.result.positions[person_id] = Position(column=0, row=first_row + index)
             self._placed.add(person_id)
-            self._occupied.add((column, top_row))
+            self._occupied.add((0, first_row + index))
 
         # Prefer the highest ordinary node on the applicant's lineage.  This
         # makes independent arrival ancestors visibly converge into the chart
