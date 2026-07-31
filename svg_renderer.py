@@ -126,7 +126,11 @@ class SvgRenderer:
         # malformed imported relationship from becoming a misleading line.
         if ty <= sy:
             return ''
-        junction_y = min(ty - self.ELBOW_MARGIN, sy + self.ELBOW_MARGIN)
+        junction_y = self._clear_junction_y(
+            sx, sy, [(tx, ty)], {connection.source, connection.target}
+        )
+        if junction_y is None:
+            return ''
         return f'<path class="connection-line" d="M {sx} {sy} L {sx} {junction_y} L {tx} {junction_y} L {tx} {ty}" />'
 
     def _family_group_path(self, group) -> str:
@@ -157,14 +161,11 @@ class SvgRenderer:
         targets = [target for target in targets if target is not None]
         # A family is drawn once: parent -> one horizontal bar -> every child.
         ax, ay = self._line_start_after_spouse(anchor_id, children[0], anchor)
-        junction_y = min(target[1] for target in targets) - self.ELBOW_MARGIN
-        if junction_y <= ay:
-            # A compact layout can leave less than one elbow margin between a
-            # parent and child.  Keep the connection instead of dropping it.
-            # The midpoint still produces a clean vertical / right-angle path.
-            junction_y = (ay + min(target[1] for target in targets)) / 2
-            if junction_y <= ay:
-                return ''
+        junction_y = self._clear_junction_y(
+            ax, ay, targets, set(children) | {anchor_id}
+        )
+        if junction_y is None:
+            return ''
         # Include the parent anchor in the horizontal span.  With multiple
         # spouses, the child-bearing spouse can be offset left or right while
         # a single child remains centred under the parent.
@@ -177,6 +178,60 @@ class SvgRenderer:
             if child_x != ax or child_top_y != junction_y:
                 parts.append(f'<path class="connection-bar" d="M {child_x} {junction_y} L {child_x} {child_top_y}" />')
         return ''.join(parts)
+
+    def _clear_junction_y(
+        self,
+        source_x: int,
+        source_y: int,
+        targets: List[Tuple[int, int]],
+        ignored_ids: set[str],
+    ) -> Optional[float]:
+        """Find the lowest clear horizontal lane between a parent and child.
+
+        A family chart can have a separate branch in the same vertical gap.
+        Fixed midpoint elbows then run directly through that person's box.
+        This routine treats each visible box across the horizontal span as a
+        blocked interval and chooses the last available lane before the child.
+        """
+        if self.layout_result is None or not targets:
+            return None
+        target_top = min(target_y for _, target_y in targets)
+        lower = source_y + 1
+        upper = target_top - self.ELBOW_MARGIN
+        if upper <= lower:
+            return None
+        left_x = min(source_x, *(target_x for target_x, _ in targets))
+        right_x = max(source_x, *(target_x for target_x, _ in targets))
+        blocked: List[Tuple[float, float]] = []
+        for person_id in self.layout_result.positions:
+            if person_id in ignored_ids:
+                continue
+            center = self._person_center(person_id)
+            if center is None:
+                continue
+            center_x, center_y = center
+            box_left, box_right = center_x - self.NODE_WIDTH / 2, center_x + self.NODE_WIDTH / 2
+            if box_right < left_x or box_left > right_x:
+                continue
+            box_top, box_bottom = center_y - self.NODE_HEIGHT / 2, center_y + self.NODE_HEIGHT / 2
+            start, end = max(lower, box_top), min(upper, box_bottom)
+            if start < end:
+                blocked.append((start, end))
+        if not blocked:
+            return upper
+        blocked.sort()
+        merged: List[Tuple[float, float]] = []
+        for start, end in blocked:
+            if not merged or start > merged[-1][1]:
+                merged.append((start, end))
+            else:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        candidate = upper
+        for start, end in reversed(merged):
+            if candidate > end:
+                return candidate - 1
+            candidate = min(candidate, start)
+        return candidate - 1 if candidate > lower else None
 
     def _arrival_ancestor_path(self, ancestor_ids: List[str], target_id: Optional[str]) -> str:
         """Draw the explicit, non-genealogical arrival-ancestor convergence."""

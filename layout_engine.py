@@ -95,6 +95,7 @@ class LayoutEngine:
         # A final spouse pass covers spouses of the last descendant layer.
         self._build_spouses()
         self._ensure_descendants_below_parents()
+        self._ensure_connection_lanes()
         self._finalize_positions()
         self.result.main_line = list(self._main_line)
         self.result.family_groups = list(self._family_groups_raw)
@@ -195,6 +196,41 @@ class LayoutEngine:
             position = self.result.positions[person_id]
             position.row += delta
             self._occupied.add((position.column, position.row))
+
+    def _ensure_connection_lanes(self) -> None:
+        """Reserve a blank row for every cross-column parent-child elbow.
+
+        The renderer must draw a horizontal segment whenever a child is not
+        directly under its parent.  If another branch occupies the row between
+        them, move the child branch down rather than allowing a line through a
+        person's box.
+        """
+        for _ in range(len(self.people) + 1):
+            changed = False
+            for (father_id, mother_id), children in self._family_groups.items():
+                anchor_id = mother_id if mother_id in self.result.positions else father_id
+                anchor = self.result.positions.get(anchor_id)
+                if anchor is None:
+                    continue
+                for child_id in children:
+                    child = self.result.positions.get(child_id)
+                    if child is None or child.column == anchor.column:
+                        continue
+                    blocking_rows = [
+                        position.row
+                        for person_id, position in self.result.positions.items()
+                        if person_id not in {anchor_id, child_id}
+                        and anchor.row < position.row < child.row
+                        and min(anchor.column, child.column) <= position.column <= max(anchor.column, child.column)
+                    ]
+                    if not blocking_rows:
+                        continue
+                    required_row = max(blocking_rows) + 2
+                    if child.row < required_row:
+                        self._shift_descendant_branch(child_id, required_row - child.row)
+                        changed = True
+            if not changed:
+                return
 
     def _build_main_chain(self) -> None:
         """Place the lineage selected by the father's 招贅 status on one axis."""
