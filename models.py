@@ -26,6 +26,9 @@ class Person:
     # 此人為招贅者時，其子女的祖系主幹改由子女的母親往上追溯。
     is_matrilineal_main_line: bool = False
 
+    # 來臺祖先不需要填寫父母，也會固定顯示在關係圖最上方。
+    is_arrival_ancestor: bool = False
+
     # 是否列入本次起掘人數統計
     is_exhumation: bool = False
 

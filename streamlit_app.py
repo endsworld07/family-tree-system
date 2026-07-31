@@ -52,6 +52,7 @@ def person_payload(people: Dict[str, Person], applicant_id: str) -> dict:
                 "mother": person.mother,
                 "spouses": list(person.spouses),
                 "is_matrilineal_main_line": person.is_matrilineal_main_line,
+                "is_arrival_ancestor": person.is_arrival_ancestor,
                 "is_exhumation": person.is_exhumation,
                 "non_exhumation_note": person.non_exhumation_note,
             }
@@ -71,6 +72,7 @@ def people_from_payload(payload: dict) -> tuple[Dict[str, Person], str]:
             mother=item.get("mother"),
             spouses=item.get("spouses", []),
             is_matrilineal_main_line=item.get("is_matrilineal_main_line", False),
+            is_arrival_ancestor=item.get("is_arrival_ancestor", False),
             is_exhumation=item.get("is_exhumation", False),
             non_exhumation_note=item.get("non_exhumation_note", ""),
         )
@@ -373,7 +375,7 @@ def export_docx(graph_png: BytesIO | None, count: int, recipient: str) -> bytes:
     return output.getvalue()
 
 
-def submit_person(name: str, label: str, father_name: str, mother_name: str, spouses_text: str, is_matrilineal_main_line: bool, is_exhumation: bool, note: str) -> None:
+def submit_person(name: str, label: str, father_name: str, mother_name: str, spouses_text: str, is_matrilineal_main_line: bool, is_arrival_ancestor: bool, is_exhumation: bool, note: str) -> None:
     people = st.session_state.people
     editing_id = st.session_state.editing_id
     if not name.strip():
@@ -394,6 +396,7 @@ def submit_person(name: str, label: str, father_name: str, mother_name: str, spo
     person.father = find_or_create_person(people, father_name)
     person.mother = find_or_create_person(people, mother_name)
     person.is_matrilineal_main_line = is_matrilineal_main_line
+    person.is_arrival_ancestor = is_arrival_ancestor
     person.is_exhumation = is_exhumation
     person.non_exhumation_note = "" if is_exhumation else note.strip()
     spouse_ids = [find_or_create_person(people, spouse_name) for spouse_name in spouse_names(spouses_text)]
@@ -464,11 +467,12 @@ def main() -> None:
             mother = st.text_input("母親（姓名）", value=people[editing.mother].name if editing and editing.mother in people else "", key=f"mother_{form_id}")
             spouse_text = st.text_input("配偶（可用逗號或頓號分隔）", value="、".join(people[spouse_id].name for spouse_id in editing.spouses if spouse_id in people) if editing else "", key=f"spouses_{form_id}")
             matrilineal = st.checkbox("是否為招贅（其子女直系主幹改依母系）", value=editing.is_matrilineal_main_line if editing else False, key=f"matrilineal_{form_id}")
+            arrival_ancestor = st.checkbox("是否為來臺祖先（固定顯示於關係圖最上方）", value=editing.is_arrival_ancestor if editing else False, key=f"arrival_ancestor_{form_id}")
             marked = st.checkbox("是否為本次起掘人數", value=editing.is_exhumation if editing else False, key=f"exhumation_{form_id}")
             note = st.text_input("備註", value=editing.non_exhumation_note if editing else "", placeholder="例如：已移置他處", key=f"note_{form_id}")
             submitted = st.form_submit_button("更新人物" if editing else "新增人物", use_container_width=True)
         if submitted:
-            submit_person(name, label, father, mother, spouse_text, matrilineal, marked, note)
+            submit_person(name, label, father, mother, spouse_text, matrilineal, arrival_ancestor, marked, note)
         if editing and st.button("取消編輯", use_container_width=True):
             st.session_state.editing_id = ""
             st.session_state.form_revision += 1
@@ -565,6 +569,8 @@ def main() -> None:
             details.append("配偶：" + "、".join(people[spouse_id].name for spouse_id in person.spouses if spouse_id in people))
         if person.is_matrilineal_main_line:
             details.append("招贅（子女依母系主幹）")
+        if person.is_arrival_ancestor:
+            details.append("來臺祖先")
         if person.is_exhumation:
             details.append("列入本次起掘人數")
         elif person.non_exhumation_note:

@@ -73,6 +73,7 @@ class SvgRenderer:
         if self.connection_result is None:
             return
         grouped_children = set()
+        fallback_anchors: Dict[str, str] = {}
         for group in self.connection_result.family_groups:
             path = self._family_group_path(group)
             if path:
@@ -81,12 +82,29 @@ class SvgRenderer:
                 # shared family path was actually drawn.  Otherwise a malformed
                 # or compact family group can leave its child with no line.
                 grouped_children.update(group.children)
+            else:
+                # When a compact or large layout cannot safely share one bar,
+                # keep exactly one parent-child path.  Drawing both parents'
+                # fallback paths is what used to create crossed/doubled lines.
+                anchor = group.mother if self._person_box_bottom(group.mother) is not None else group.father
+                if anchor:
+                    for child in group.children:
+                        fallback_anchors[child] = anchor
         # A malformed/incomplete family group can still use the old parent fallback.
         for connection in self.connection_result.parent_connections:
             if connection.target not in grouped_children:
+                expected_anchor = fallback_anchors.get(connection.target)
+                if expected_anchor is not None and connection.source != expected_anchor:
+                    continue
                 path = self._parent_path(connection)
                 if path:
                     self._elements.append(path)
+        arrival_path = self._arrival_ancestor_path(
+            self.connection_result.arrival_ancestors,
+            self.connection_result.arrival_target,
+        )
+        if arrival_path:
+            self._elements.append(arrival_path)
 
     def _person_center(self, person_id: str) -> Optional[Tuple[int, int]]:
         if self.layout_result is None or person_id not in self.layout_result.positions:
@@ -120,6 +138,22 @@ class SvgRenderer:
         anchor = self._person_box_bottom(anchor_id) if anchor_id else None
         if anchor is None or not children:
             return ''
+        # A shared horizontal trunk is only safe when all children are on the
+        # same lower generation.  On a large chart some collateral branches
+        # may be positioned differently; let the single-parent fallback draw
+        # those paths instead of stretching a bar across unrelated branches.
+        child_rows = {
+            self.layout_result.positions[child].row
+            for child in children
+            if self.layout_result is not None and child in self.layout_result.positions
+        }
+        parent_rows = [
+            self.layout_result.positions[parent_id].row
+            for parent_id in (group.father, group.mother)
+            if self.layout_result is not None and parent_id in self.layout_result.positions
+        ]
+        if len(child_rows) != 1 or not parent_rows or next(iter(child_rows)) <= max(parent_rows):
+            return ''
         targets = [self._person_box_top(child) for child in children]
         targets = [target for target in targets if target is not None]
         # A family is drawn once: parent -> one horizontal bar -> every child.
@@ -143,6 +177,39 @@ class SvgRenderer:
         for child_x, child_top_y in targets:
             if child_x != ax or child_top_y != junction_y:
                 parts.append(f'<path class="connection-bar" d="M {child_x} {junction_y} L {child_x} {child_top_y}" />')
+        return ''.join(parts)
+
+    def _arrival_ancestor_path(self, ancestor_ids: List[str], target_id: Optional[str]) -> str:
+        """Draw the explicit, non-genealogical arrival-ancestor convergence."""
+        if not target_id or target_id in ancestor_ids:
+            return ''
+        sources = [
+            (person_id, self._person_box_bottom(person_id))
+            for person_id in ancestor_ids
+        ]
+        sources = [(person_id, point) for person_id, point in sources if point is not None]
+        target = self._person_box_top(target_id)
+        if not sources or target is None:
+            return ''
+        tx, ty = target
+        source_bottom = max(point[1] for _, point in sources)
+        if ty <= source_bottom:
+            return ''
+        # Keep the common bar immediately above the receiving family.  This
+        # prevents its final vertical segment from passing through a spouse
+        # box that happens to be between an independent arrival root and the
+        # ordinary family tree.
+        junction_y = ty - self.ELBOW_MARGIN
+        if junction_y <= source_bottom:
+            junction_y = (source_bottom + ty) / 2
+        parts: List[str] = []
+        source_xs = [point[0] for _, point in sources]
+        for _, (source_x, source_y) in sources:
+            parts.append(f'<path class="connection-bar" d="M {source_x} {source_y} L {source_x} {junction_y}" />')
+        left_x, right_x = min(*source_xs, tx), max(*source_xs, tx)
+        if left_x != right_x:
+            parts.append(f'<path class="connection-bar" d="M {left_x} {junction_y} L {right_x} {junction_y}" />')
+        parts.append(f'<path class="connection-bar" d="M {tx} {junction_y} L {tx} {ty}" />')
         return ''.join(parts)
 
     def _line_start_after_spouse(self, source_id: str, target_id: str,

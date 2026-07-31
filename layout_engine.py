@@ -25,6 +25,10 @@ class LayoutResult:
     family_groups: List[dict] = field(default_factory=list)
     spouse_lookup: set[str] = field(default_factory=set)
     family_centers: Dict[Tuple[Optional[str], Optional[str]], int] = field(default_factory=dict)
+    # 勾選「來臺祖先」的人固定置頂；target 是多個來源匯流後接入的
+    # 既有家族主幹節點。
+    arrival_ancestors: List[str] = field(default_factory=list)
+    arrival_target: Optional[str] = None
 
 
 class LayoutEngine:
@@ -74,12 +78,47 @@ class LayoutEngine:
         # Descendants may themselves have spouses, so expand them after they
         # have received a position as well.
         self._build_spouses()
+        self._place_arrival_ancestors()
         self._finalize_positions()
         self.result.main_line = list(self._main_line)
         self.result.family_groups = list(self._family_groups_raw)
         self.result.spouse_lookup = set(self._spouse_lookup)
         self.result.family_centers = dict(self._family_centers)
         return self.result
+
+    def _place_arrival_ancestors(self) -> None:
+        """Move marked arrival ancestors to a shared top row.
+
+        They are intentionally allowed to be independent roots: historical
+        source material often has no recorded parent for a person who came to
+        Taiwan.  Multiple roots are later connected by the renderer to one
+        unobtrusive common trunk below them.
+        """
+        ancestors = [
+            person_id for person_id, person in self.people.items()
+            if person.is_arrival_ancestor
+        ]
+        if not ancestors:
+            return
+
+        top_row = min((position.row for position in self.result.positions.values()), default=0) - 3
+        for person_id, column in zip(ancestors, self._centered_offsets(len(ancestors))):
+            old = self.result.positions.get(person_id)
+            if old is not None:
+                self._occupied.discard((old.column, old.row))
+            self.result.positions[person_id] = Position(column=column, row=top_row)
+            self._placed.add(person_id)
+            self._occupied.add((column, top_row))
+
+        # Prefer the highest ordinary node on the applicant's lineage.  This
+        # makes independent arrival ancestors visibly converge into the chart
+        # without inventing a father/mother relationship in the user data.
+        ancestor_set = set(ancestors)
+        target = next((person_id for person_id in self._main_line if person_id not in ancestor_set), None)
+        if target is None and self.applicant_id not in ancestor_set:
+            target = self.applicant_id
+        self.result.arrival_ancestors = ancestors
+        self.result.arrival_target = target
 
     def _build_main_chain(self) -> None:
         """Place the lineage selected by the father's 招贅 status on one axis."""

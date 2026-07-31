@@ -42,6 +42,8 @@ class ConnectionResult:
     connections: List[Connection] = field(default_factory=list)
     parent_connections: List[Connection] = field(default_factory=list)
     family_groups: List[FamilyGroup] = field(default_factory=list)
+    arrival_ancestors: List[str] = field(default_factory=list)
+    arrival_target: Optional[str] = None
 
 
 # ---------------------------------------------------------
@@ -80,6 +82,8 @@ class ConnectionEngine:
 
         self._build_parent_connections()
         self._build_family_groups()
+        self.result.arrival_ancestors = list(self.layout_result.arrival_ancestors)
+        self.result.arrival_target = self.layout_result.arrival_target
 
         return self.result
 

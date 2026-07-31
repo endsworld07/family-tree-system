@@ -30,6 +30,7 @@ class DataLoader:
                 mother=item.get("mother"),
                 spouses=item.get("spouses", []),
                 is_matrilineal_main_line=item.get("is_matrilineal_main_line", False),
+                is_arrival_ancestor=item.get("is_arrival_ancestor", False),
                 is_exhumation=item.get("is_exhumation", False),
                 non_exhumation_note=item.get("non_exhumation_note", ""),
             )
