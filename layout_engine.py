@@ -93,12 +93,6 @@ class LayoutEngine:
                 break
         # A final spouse pass covers spouses of the last descendant layer.
         self._build_spouses()
-        # Keep compact sibling placement, but avoid the one misleading case
-        # where a later child sits directly under an aunt/uncle in the same
-        # column.  Only that child branch is moved to the other side; this is
-        # deliberately local so a large family never makes unrelated people
-        # drift far across the page.
-        self._avoid_false_parent_alignment()
         self._finalize_positions()
         self.result.main_line = list(self._main_line)
         self.result.family_groups = list(self._family_groups_raw)
@@ -661,12 +655,11 @@ class LayoutEngine:
         direction = 1 if column >= origin_column else -1
         candidate_column = column
         for distance in range(len(self.people) + 3):
-            if (
-                self._is_slot_available(candidate_column, row, person_id)
-                and not self._has_unrelated_parent_row_box(
-                    candidate_column, parent_row, parent_ids
-                )
-            ):
+            # A box on the parents' own row does not block a child slot: the
+            # renderer draws the family elbow *below* that row.  Treating it
+            # as a collision was the cause of whole descendant branches being
+            # pushed several columns away in a large family.
+            if self._is_slot_available(candidate_column, row, person_id):
                 self._place(person_id, candidate_column, row)
                 return
             candidate_column = column + direction * (distance + 1)
