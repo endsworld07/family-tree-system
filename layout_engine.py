@@ -37,6 +37,9 @@ class LayoutEngine:
     COLUMN_GAP = 180
     ROW_GAP = 60
     NODE_MARGIN = 15
+    # 血親支系比配偶需要更大的橫向空間，避免大型家族的下代
+    # 回到中央主幹旁而產生交叉線。
+    BLOOD_BRANCH_SPACING = 2
 
     def __init__(self, people: Dict[str, Person], relationships: dict, applicant_id: str):
         self.people = people
@@ -232,9 +235,17 @@ class LayoutEngine:
             ]
             left_count = len(siblings) // 2
             for index, sibling_id in enumerate(siblings[:left_count], start=1):
-                self._place(sibling_id, base.column - (left_count - index + 1), base.row)
+                self._place(
+                    sibling_id,
+                    base.column - (left_count - index + 1) * self.BLOOD_BRANCH_SPACING,
+                    base.row,
+                )
             for index, sibling_id in enumerate(siblings[left_count:], start=1):
-                self._place(sibling_id, base.column + index, base.row)
+                self._place(
+                    sibling_id,
+                    base.column + index * self.BLOOD_BRANCH_SPACING,
+                    base.row,
+                )
             self._family_centers[key] = base.column
 
     def _build_descendant_rows(self) -> None:
@@ -292,7 +303,9 @@ class LayoutEngine:
                 self._family_centers[(father_id, mother_id)] = anchor_pos.column
                 continue
 
-            offsets = self._centered_offsets(len(children))
+            offsets = self._centered_offsets(
+                len(children), spacing=self.BLOOD_BRANCH_SPACING
+            )
             for child_id, offset in zip(children, offsets):
                 self._place_child_outward(
                     child_id,
@@ -303,10 +316,10 @@ class LayoutEngine:
             self._family_centers[(father_id, mother_id)] = anchor_pos.column
 
     @staticmethod
-    def _centered_offsets(count: int) -> List[int]:
+    def _centered_offsets(count: int, spacing: int = 1) -> List[int]:
         if count % 2:
-            return list(range(-(count // 2), count // 2 + 1))
-        return list(range(-(count // 2), 0)) + list(range(1, count // 2 + 1))
+            return [offset * spacing for offset in range(-(count // 2), count // 2 + 1)]
+        return [offset * spacing for offset in range(-(count // 2), 0)] + [offset * spacing for offset in range(1, count // 2 + 1)]
 
     def _build_spouses(self) -> None:
         """Place the child-bearing spouse below; put additional spouses beside it."""
