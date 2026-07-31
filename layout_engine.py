@@ -95,6 +95,7 @@ class LayoutEngine:
         # A final spouse pass covers spouses of the last descendant layer.
         self._build_spouses()
         self._ensure_descendants_below_parents()
+        self._ensure_child_parent_columns()
         self._ensure_connection_lanes()
         self._finalize_positions()
         self.result.main_line = list(self._main_line)
@@ -217,7 +218,7 @@ class LayoutEngine:
                     if child is None or child.column == anchor.column:
                         continue
                     blocking_rows = [
-                        position.row
+                        (person_id, position.row)
                         for person_id, position in self.result.positions.items()
                         if person_id not in {anchor_id, child_id}
                         and anchor.row < position.row < child.row
@@ -225,12 +226,110 @@ class LayoutEngine:
                     ]
                     if not blocking_rows:
                         continue
-                    required_row = max(blocking_rows) + 2
+                    # Keep sibling generations aligned whenever the blocking
+                    # person belongs to a collateral branch.  Moving that
+                    # branch sideways is clearer than pushing a legitimate
+                    # sibling downward into what looks like another family.
+                    movable_blocker = next(
+                        (
+                            person_id for person_id, _ in blocking_rows
+                            if person_id not in self._main_line
+                        ),
+                        None,
+                    )
+                    if movable_blocker is not None:
+                        blocker = self.result.positions[movable_blocker]
+                        direction = 1 if blocker.column >= anchor.column else -1
+                        self._move_descendant_branch_horizontally(movable_blocker, direction)
+                        changed = True
+                        continue
+                    required_row = max(row for _, row in blocking_rows) + 2
                     if child.row < required_row:
                         self._shift_descendant_branch(child_id, required_row - child.row)
                         changed = True
             if not changed:
                 return
+
+    def _ensure_child_parent_columns(self) -> None:
+        """Move a pre-positioned child away from an aunt/uncle's column."""
+        for (father_id, mother_id), children in self._family_groups.items():
+            anchor_id = mother_id if mother_id in self.result.positions else father_id
+            anchor = self.result.positions.get(anchor_id)
+            if anchor is None:
+                continue
+            parent_row = max(
+                self.result.positions[parent_id].row
+                for parent_id in (father_id, mother_id)
+                if parent_id in self.result.positions
+            )
+            parent_ids = {father_id, mother_id}
+            for child_id in children:
+                child = self.result.positions.get(child_id)
+                if child is None or child.column == anchor.column:
+                    continue
+                blockers = self._unrelated_parent_row_people(
+                    child.column, parent_row, parent_ids
+                )
+                if not blockers:
+                    continue
+                # Preserve the central/main branch whenever possible.  The
+                # person blocking this track is a collateral aunt/uncle, so
+                # move that complete side branch outward instead of making a
+                # central child appear to descend from the aunt/uncle.
+                movable_blocker = next(
+                    (person_id for person_id in blockers if person_id not in self._main_line),
+                    None,
+                )
+                if movable_blocker is not None:
+                    blocker = self.result.positions[movable_blocker]
+                    direction = 1 if blocker.column >= anchor.column else -1
+                    self._move_descendant_branch_horizontally(movable_blocker, direction)
+                    continue
+                direction = 1 if child.column > anchor.column else -1
+                self._move_descendant_branch_horizontally(child_id, direction)
+
+    def _move_descendant_branch_horizontally(self, root_id: str, direction: int) -> None:
+        """Shift a complete branch sideways to the first empty track."""
+        branch: set[str] = set()
+        pending = [root_id]
+        while pending:
+            person_id = pending.pop()
+            if person_id in branch or person_id not in self.result.positions:
+                continue
+            branch.add(person_id)
+            person_position = self.result.positions[person_id]
+            for spouse_id in self._spouse_ids_for(person_id):
+                spouse_position = self.result.positions.get(spouse_id)
+                if spouse_position is not None and spouse_position.row >= person_position.row:
+                    pending.append(spouse_id)
+            for (father_id, mother_id), children in self._family_groups.items():
+                if person_id in (father_id, mother_id):
+                    pending.extend(children)
+
+        required_gap = (self.NODE_WIDTH + self.NODE_MARGIN) / self.COLUMN_GAP
+        for distance in range(1, len(self.people) + 3):
+            shift = direction * distance
+            clear = True
+            for person_id in branch:
+                position = self.result.positions[person_id]
+                for other_id, other_position in self.result.positions.items():
+                    if other_id in branch or other_position.row != position.row:
+                        continue
+                    if abs((position.column + shift) - other_position.column) < required_gap - 1e-9:
+                        clear = False
+                        break
+                if not clear:
+                    break
+            if not clear:
+                continue
+            for person_id in branch:
+                position = self.result.positions[person_id]
+                self._occupied.discard((position.column, position.row))
+            for person_id in branch:
+                position = self.result.positions[person_id]
+                position.column += shift
+                self._occupied.add((position.column, position.row))
+            return
 
     def _build_main_chain(self) -> None:
         """Place the lineage selected by the father's 招贅 status on one axis."""
@@ -348,6 +447,8 @@ class LayoutEngine:
                     anchor_pos.column + offset,
                     child_row,
                     anchor_pos.column,
+                    parent_row,
+                    {father_id, mother_id},
                 )
             self._family_centers[(father_id, mother_id)] = anchor_pos.column
 
@@ -472,8 +573,57 @@ class LayoutEngine:
             return True
         return False
 
-    def _place_child_outward(self, person_id: str, column: int, row: int, origin_column: int) -> None:
-        self._place_near(person_id, column, row, origin_column)
+    def _place_child_outward(
+        self,
+        person_id: str,
+        column: int,
+        row: int,
+        origin_column: int,
+        parent_row: int,
+        parent_ids: set[Optional[str]],
+    ) -> None:
+        """Place a child away from an unrelated box on the parents' row.
+
+        If a child is placed directly below an aunt/uncle on the same column,
+        the final vertical segment of its true parent's shared trunk looks as
+        if that aunt/uncle were the parent.  Reserve that column and extend the
+        child branch outward instead.
+        """
+        direction = 1 if column >= origin_column else -1
+        candidate_column = column
+        for distance in range(len(self.people) + 3):
+            if (
+                self._is_slot_available(candidate_column, row, person_id)
+                and not self._has_unrelated_parent_row_box(
+                    candidate_column, parent_row, parent_ids
+                )
+            ):
+                self._place(person_id, candidate_column, row)
+                return
+            candidate_column = column + direction * (distance + 1)
+
+    def _has_unrelated_parent_row_box(
+        self,
+        column: float,
+        parent_row: int,
+        parent_ids: set[Optional[str]],
+    ) -> bool:
+        return bool(self._unrelated_parent_row_people(column, parent_row, parent_ids))
+
+    def _unrelated_parent_row_people(
+        self,
+        column: float,
+        parent_row: int,
+        parent_ids: set[Optional[str]],
+    ) -> List[str]:
+        required_gap = (self.NODE_WIDTH + self.NODE_MARGIN) / self.COLUMN_GAP
+        return [
+            person_id
+            for person_id, position in self.result.positions.items()
+            if person_id not in parent_ids
+            and position.row == parent_row
+            and abs(position.column - column) < required_gap - 1e-9
+        ]
 
     def _place(self, person_id: str, column: int, row: int) -> None:
         if person_id not in self.people or not self._is_slot_available(column, row, person_id):
